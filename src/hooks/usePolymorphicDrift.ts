@@ -10,16 +10,8 @@ interface PointerPosition {
 }
 
 function writePointerVariables(element: HTMLElement, position: PointerPosition) {
-  element.style.setProperty('--ambient-parallax-x', `${(position.x * 30).toFixed(2)}px`)
-  element.style.setProperty('--ambient-parallax-y', `${(position.y * 22).toFixed(2)}px`)
-  element.style.setProperty('--left-parallax-x', `${(position.x * 7).toFixed(2)}px`)
-  element.style.setProperty('--left-parallax-y', `${(position.y * 5).toFixed(2)}px`)
-  element.style.setProperty('--portrait-parallax-x', `${(position.x * -3).toFixed(2)}px`)
-  element.style.setProperty('--portrait-parallax-y', `${(position.y * -2).toFixed(2)}px`)
-  element.style.setProperty('--right-parallax-x', `${(position.x * -9).toFixed(2)}px`)
-  element.style.setProperty('--right-parallax-y', `${(position.y * -6).toFixed(2)}px`)
-  element.style.setProperty('--grid-parallax-x', `${(position.x * -3).toFixed(2)}px`)
-  element.style.setProperty('--grid-parallax-y', `${(position.y * -2).toFixed(2)}px`)
+  element.style.setProperty('--artwork-parallax-x', `${(position.x * -3).toFixed(2)}px`)
+  element.style.setProperty('--artwork-parallax-y', `${(position.y * -2).toFixed(2)}px`)
 }
 
 export function usePolymorphicDrift() {

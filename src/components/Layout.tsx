@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PropsWithChildren } from 'react'
 import { artist, socialProfiles } from '../content/artist'
-import { NavLink, useRouter } from '../lib/router'
+import { Link, NavLink, useRouter } from '../lib/router'
 import { ExternalLink } from './ExternalLink'
 
 const navigation = [
@@ -14,6 +14,8 @@ export function Layout({ children }: PropsWithChildren) {
   const [menuOpen, setMenuOpen] = useState(false)
   const { pathname } = useRouter()
   const menuButton = useRef<HTMLButtonElement>(null)
+  const menuPanel = useRef<HTMLElement>(null)
+  const isHome = pathname === '/'
 
   useEffect(() => {
     setMenuOpen(false)
@@ -23,15 +25,46 @@ export function Layout({ children }: PropsWithChildren) {
   useEffect(() => {
     if (!menuOpen) return
 
+    const bodyOverflow = document.body.style.overflow
+    const main = document.getElementById('main-content')
+    const footer = document.querySelector<HTMLElement>('.site-footer')
+    document.body.style.overflow = 'hidden'
+    main?.setAttribute('inert', '')
+    footer?.setAttribute('inert', '')
+
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setMenuOpen(false)
         menuButton.current?.focus()
+        return
+      }
+
+      if (event.key !== 'Tab') return
+
+      const focusable = [
+        menuButton.current,
+        ...Array.from(menuPanel.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? []),
+      ].filter((element): element is HTMLElement => Boolean(element))
+      const first = focusable[0]
+      const last = focusable.at(-1)
+
+      if (!first || !last) return
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
       }
     }
 
     document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('keydown', handleKey)
+      document.body.style.overflow = bodyOverflow
+      main?.removeAttribute('inert')
+      footer?.removeAttribute('inert')
+    }
   }, [menuOpen])
 
   return (
@@ -39,7 +72,12 @@ export function Layout({ children }: PropsWithChildren) {
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <header className="site-header">
+      <header className={isHome ? 'site-header site-header--home' : 'site-header'}>
+        {isHome ? (
+          <Link className="site-wordmark" to="/" tabIndex={menuOpen ? -1 : undefined}>
+            Internet Athi
+          </Link>
+        ) : null}
         <nav className="desktop-nav" aria-label="Primary navigation">
           {navigation.map((item) => (
             <NavLink
@@ -67,14 +105,24 @@ export function Layout({ children }: PropsWithChildren) {
       </header>
 
       {menuOpen ? (
-        <div className="mobile-menu" id="mobile-navigation">
+        <div
+          className="mobile-menu"
+          id="mobile-navigation"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Primary navigation"
+        >
           <button
             className="mobile-menu__backdrop"
             type="button"
             aria-label="Close navigation"
-            onClick={() => setMenuOpen(false)}
+            tabIndex={-1}
+            onClick={() => {
+              setMenuOpen(false)
+              menuButton.current?.focus()
+            }}
           />
-          <nav className="mobile-menu__panel" aria-label="Mobile navigation">
+          <nav ref={menuPanel} className="mobile-menu__panel" aria-label="Mobile navigation">
             <p className="index-label">The polymorphic archive</p>
             {navigation.map((item) => (
               <NavLink key={item.to} to={item.to} className="mobile-menu__link">
@@ -87,11 +135,11 @@ export function Layout({ children }: PropsWithChildren) {
         </div>
       ) : null}
 
-      <main id="main-content" tabIndex={-1}>
+      <main id="main-content" tabIndex={-1} aria-hidden={menuOpen || undefined}>
         {children}
       </main>
 
-      <footer className="site-footer">
+      <footer className="site-footer" aria-hidden={menuOpen || undefined}>
         <div>
           <p className="site-footer__name">Internet Athi</p>
           <p>{artist.location}</p>

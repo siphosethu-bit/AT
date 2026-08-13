@@ -1,9 +1,12 @@
 import { ExternalLink } from '../components/ExternalLink'
 import { Seo } from '../components/Seo'
-import { liveEvents, polymorphism } from '../content/artist'
+import { artist, liveEvents, polymorphism } from '../content/artist'
 import { usePolymorphicDrift } from '../hooks/usePolymorphicDrift'
 import { formatLiveEventDate, getLiveEventStatus, sortLiveEvents } from '../lib/liveEvents'
 import { Link } from '../lib/router'
+
+const SPOTIFY_ALBUM_URL = 'https://open.spotify.com/album/2pduDMmEcftxkrJNIgZYS3'
+const NGUWE_VIDEO_URL = 'https://www.youtube.com/watch?v=te8yGYWmy2I'
 
 export function HomePage() {
   const { stageRef, entranceState } = usePolymorphicDrift()
@@ -25,61 +28,59 @@ export function HomePage() {
         data-motion-state="running"
         data-entrance-state={entranceState}
       >
-        <div className="home-stage__ambient" aria-hidden="true" />
-        <div className="home-stage__grid" aria-hidden="true" />
-
-        <div className="home-stage__coordinates index-label" aria-hidden="true">
-          CPT / 33.9249° S / 18.4241° E
-        </div>
-
-        <figure className="portrait-fragment portrait-fragment--left" aria-hidden="true">
-          <img src="/assets/athi-balcony.webp" alt="" width="372" height="557" />
-        </figure>
-        <figure className="portrait-fragment portrait-fragment--right" aria-hidden="true">
-          <img src="/assets/athi-wide.webp" alt="" width="712" height="251" />
-        </figure>
-        <div className="home-stage__contrast" aria-hidden="true" />
-
-        <div className="home-stage__identity">
-          <p className="eyebrow">Internet Athi</p>
-          <p>{'Cape Town singer-songwriter'}<br />{'and live performer.'}</p>
-        </div>
-
-        <figure className="home-stage__portrait">
+        <picture className="home-artwork" aria-hidden="true">
+          <source
+            media="(max-width: 1023px) and (orientation: portrait)"
+            srcSet="/assets/internet-athi-hero-mobile.png"
+          />
           <img
-            src="/assets/athi-front.webp"
-            alt="Internet Athi wearing a dark flat cap and brown corduroy shirt"
-            width="548"
-            height="552"
+            className="home-artwork__image"
+            src="/assets/internet-athi-hero-desktop.png"
+            alt=""
+            width="1672"
+            height="941"
             fetchPriority="high"
           />
-          <figcaption className="index-label">Portrait / form 01</figcaption>
-        </figure>
+        </picture>
+        <div className="home-stage__readability" aria-hidden="true" />
 
-        <div className="home-stage__release">
-          <p className="index-label">Current release / {polymorphism.year}</p>
-          <h1 id="home-title">Polymorphism</h1>
-          <p className="release-status">Out now</p>
-          <div className="home-stage__actions">
-            <Link className="action-link action-link--primary" to="/listen">
-              Listen to Polymorphism
-            </Link>
-            <ExternalLink
-              className="action-link action-link--quiet"
-              href="https://youtu.be/te8yGYWmy2I"
-              showArrow
-            >
+        <div className="home-stage__interface">
+          <div className="landing-release">
+            <p className="landing-release__eyebrow">Current release / {polymorphism.year}</p>
+            <h1 id="home-title">
+              <span className="sr-only">Polymorphism</span>
+              <span className="landing-release__line" aria-hidden="true">
+                <span>POLY</span>
+              </span>
+              <span className="landing-release__line" aria-hidden="true">
+                <span>MORPHISM</span>
+              </span>
+            </h1>
+          </div>
+
+          <div className="release-actions" aria-label="Polymorphism release links">
+            <ExternalLink className="release-actions__primary" href={SPOTIFY_ALBUM_URL}>
+              Listen now
+            </ExternalLink>
+            <ExternalLink className="release-actions__secondary" href={NGUWE_VIDEO_URL}>
               Watch Nguwe
             </ExternalLink>
           </div>
-        </div>
 
-        <div className="home-stage__routes" aria-label="More destinations">
-          <Link to="/live">Live dates</Link>
-          <span aria-hidden="true">/</span>
-          <Link to="/story">The story</Link>
-          <span aria-hidden="true">/</span>
-          <Link to="/book">Book Athi</Link>
+          <div className="artist-introduction">
+            <p>{artist.name}</p>
+            <p>Cape Town singer-songwriter<br />and live performer.</p>
+          </div>
+
+          <div className="release-indicator">
+            <span className="sr-only">Release 1 of 4</span>
+            <p className="release-indicator__count" aria-hidden="true">
+              <span>01</span><span>/</span><span>04</span>
+            </p>
+            <span className="release-indicator__track" aria-hidden="true">
+              <span />
+            </span>
+          </div>
         </div>
       </section>
 

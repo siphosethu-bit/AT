@@ -9,6 +9,7 @@ const viewports = [
   { width: 360, height: 800 },
   { width: 375, height: 812 },
   { width: 390, height: 844 },
+  { width: 414, height: 896 },
   { width: 430, height: 932 },
   { width: 667, height: 375 },
   { width: 844, height: 390 },
@@ -17,11 +18,15 @@ const viewports = [
   { width: 1280, height: 720 },
   { width: 1366, height: 768 },
   { width: 1440, height: 900 },
+  { width: 1680, height: 1050 },
   { width: 1920, height: 1080 },
 ]
 
-const isTouchLayout = ({ width, height }) => (
-  width <= 780 || (width <= 900 && height <= 500 && width > height)
+const expectsMobileArtwork = ({ width, height }) => width <= 1023 && height > width
+const expectsMenu = ({ width, height }) => (
+  width <= 767 ||
+  (width <= 1023 && height > width) ||
+  (width <= 900 && height <= 500 && width > height)
 )
 
 await mkdir('.qa/home', { recursive: true })
@@ -35,30 +40,30 @@ const report = {
   viewports: [],
   reducedMotion: [],
   interactions: {},
-  motionLifecycle: {},
+  returnVisit: {},
   textEnlargement: {},
   failures: [],
 }
 
 for (const viewport of viewports) {
-  const touchLayout = isTouchLayout(viewport)
-  const context = await browser.newContext({
-    viewport,
-    hasTouch: touchLayout,
-    reducedMotion: 'no-preference',
-  })
-  await context.addInitScript(() => sessionStorage.setItem('internet-athi-intro-seen', 'true'))
+  const context = await browser.newContext({ viewport, hasTouch: expectsMenu(viewport) })
   const page = await context.newPage()
   const errors = []
+  const artworkRequests = []
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(`console: ${message.text()}`)
   })
   page.on('pageerror', (error) => errors.push(`page: ${error.message}`))
+  page.on('request', (request) => {
+    if (request.url().includes('internet-athi-hero-')) {
+      artworkRequests.push(request.url().split('/').at(-1))
+    }
+  })
 
   await page.goto(baseUrl, { waitUntil: 'networkidle' })
-  await page.waitForTimeout(1400)
+  await page.waitForTimeout(1100)
 
-  const metrics = await page.evaluate((expectsMenu) => {
+  const metrics = await page.evaluate((menuExpected) => {
     const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect().toJSON() ?? null
     const visible = (selector) => {
       const element = document.querySelector(selector)
@@ -67,62 +72,54 @@ for (const viewport of viewports) {
       const bounds = element.getBoundingClientRect()
       return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && bounds.width > 0 && bounds.height > 0
     }
-    const stage = document.querySelector('.home-stage')
-    const afterword = document.querySelector('.home-afterword')
-    const portrait = document.querySelector('.home-stage__portrait img')
-    const heroLinks = [...document.querySelectorAll('.home-stage__actions a, .home-stage__routes a')]
-    const actionLinks = [...document.querySelectorAll('.home-stage__actions a')]
-    const routeLinks = [...document.querySelectorAll('.home-stage__routes a')]
-    const title = rect('.home-stage__release h1')
-    const primary = rect('.home-stage__actions .action-link--primary')
-    const routes = rect('.home-stage__routes')
-    const stageStyle = stage ? getComputedStyle(stage) : null
-    const portraitFrame = document.querySelector('.home-stage__portrait')
-    const leftFragment = document.querySelector('.portrait-fragment--left')
-    const ambient = document.querySelector('.home-stage__ambient')
-    const decorativeElements = document.querySelectorAll(
-      '.home-stage__ambient, .home-stage__grid, .home-stage__contrast, .portrait-fragment',
-    )
     const inViewport = (bounds) => Boolean(
       bounds && bounds.left >= -1 && bounds.right <= innerWidth + 1 && bounds.top >= -1 && bounds.bottom <= innerHeight + 1
     )
+    const artwork = document.querySelector('.home-artwork__image')
+    const stage = rect('.home-stage')
+    const title = rect('.landing-release h1')
+    const actions = rect('.release-actions')
+    const indicator = rect('.release-indicator')
+    const actionLinks = [...document.querySelectorAll('.release-actions a')]
+    const routeLinks = [...document.querySelectorAll('.desktop-nav a')]
 
     return {
       horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 2,
-      stageHeight: stage?.getBoundingClientRect().height ?? 0,
-      afterwordTop: afterword?.getBoundingClientRect().top ?? 0,
+      stage,
+      afterwordTop: rect('.home-afterword')?.top ?? 0,
       title,
-      primary,
-      routes,
+      actions,
+      indicator,
       titleInViewport: inViewport(title),
-      primaryInViewport: inViewport(primary),
-      routesInViewport: inViewport(routes),
-      identityVisible: visible('.home-stage__identity'),
-      portraitLoaded: Boolean(portrait?.complete && portrait.naturalWidth >= 548 && portrait.naturalHeight >= 552),
-      menuVisible: visible('.menu-toggle'),
-      desktopNavigationVisible: visible('.desktop-nav'),
-      menuModeCorrect: expectsMenu ? visible('.menu-toggle') && !visible('.desktop-nav') : !visible('.menu-toggle') && visible('.desktop-nav'),
-      heroLinkLabels: heroLinks.map((link) => link.textContent?.replace(/\s+/g, ' ').trim()),
-      safeSecondaryLink: actionLinks[1]?.getAttribute('target') === '_blank' && (actionLinks[1]?.getAttribute('rel') ?? '').includes('noopener'),
-      touchTargets: [...actionLinks, ...routeLinks].map((link) => ({
-        label: link.textContent?.replace(/\s+/g, ' ').trim(),
+      actionsInViewport: inViewport(actions),
+      indicatorInViewport: inViewport(indicator),
+      headingCount: document.querySelectorAll('h1').length,
+      titleLines: [...document.querySelectorAll('.landing-release__line')].map((line) => line.textContent?.trim()),
+      artworkLoaded: Boolean(artwork?.complete && artwork.naturalWidth > 0 && artwork.naturalHeight > 0),
+      artworkSource: artwork?.currentSrc.split('/').at(-1),
+      artworkDimensions: artwork ? { width: artwork.naturalWidth, height: artwork.naturalHeight } : null,
+      artworkPointerEvents: getComputedStyle(document.querySelector('.home-artwork')).pointerEvents,
+      menuModeCorrect: menuExpected
+        ? visible('.menu-toggle') && !visible('.desktop-nav')
+        : !visible('.menu-toggle') && visible('.desktop-nav'),
+      identityModeCorrect: menuExpected && innerHeight > innerWidth
+        ? !visible('.artist-introduction')
+        : visible('.artist-introduction'),
+      actionLinks: actionLinks.map((link) => ({
+        label: link.textContent?.trim(),
+        href: link.getAttribute('href'),
+        target: link.getAttribute('target'),
+        rel: link.getAttribute('rel'),
         width: link.getBoundingClientRect().width,
         height: link.getBoundingClientRect().height,
       })),
-      headingCount: document.querySelectorAll('h1').length,
-      introCount: document.querySelectorAll('.intro').length,
-      bodyOverflow: getComputedStyle(document.body).overflow,
-      motionState: stage?.getAttribute('data-motion-state'),
-      motionPlayState: stageStyle?.getPropertyValue('--motion-play-state').trim(),
-      ambientAnimation: ambient ? getComputedStyle(ambient, '::before').animationName : '',
-      portraitAnimation: portrait ? getComputedStyle(portrait).animationName : '',
-      portraitFrameAnimation: portraitFrame ? getComputedStyle(portraitFrame).animationName : '',
-      fragmentAnimation: leftFragment ? getComputedStyle(leftFragment).animationName : '',
-      decorativePointerEventsDisabled: [...decorativeElements]
-        .every((element) => getComputedStyle(element).pointerEvents === 'none'),
+      routeLinks: routeLinks.map((link) => link.getAttribute('href')),
+      motionState: document.querySelector('.home-stage')?.getAttribute('data-motion-state'),
+      motionPlayState: getComputedStyle(document.querySelector('.home-stage')).getPropertyValue('--motion-play-state').trim(),
     }
-  }, touchLayout)
+  }, expectsMenu(viewport))
 
+  const headingAccessible = await page.getByRole('heading', { level: 1, name: 'Polymorphism' }).count() === 1
   const axeResults = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
     .analyze()
@@ -135,30 +132,57 @@ for (const viewport of viewports) {
     fullPage: false,
   })
 
-  const result = { viewport, touchLayout, ...metrics, seriousAxeViolations, errors }
+  const expectedArtwork = expectsMobileArtwork(viewport)
+    ? 'internet-athi-hero-mobile.png'
+    : 'internet-athi-hero-desktop.png'
+  const expectedDimensions = expectsMobileArtwork(viewport)
+    ? { width: 853, height: 1844 }
+    : { width: 1672, height: 941 }
+  const uniqueArtworkRequests = [...new Set(artworkRequests)]
+  const actionsCorrect = (
+    metrics.actionLinks.length === 2 &&
+    metrics.actionLinks[0].href === 'https://open.spotify.com/album/2pduDMmEcftxkrJNIgZYS3' &&
+    metrics.actionLinks[1].href === 'https://www.youtube.com/watch?v=te8yGYWmy2I' &&
+    metrics.actionLinks.every((link) => (
+      link.target === '_blank' &&
+      link.rel?.includes('noopener') &&
+      link.width >= 43.5 &&
+      link.height >= 43.5
+    ))
+  )
+  const result = {
+    viewport,
+    expectedArtwork,
+    uniqueArtworkRequests,
+    ...metrics,
+    headingAccessible,
+    seriousAxeViolations,
+    errors,
+  }
   report.viewports.push(result)
-  const badTouchTarget = touchLayout && metrics.touchTargets.some((target) => target.height < 43.5 || target.width < 43.5)
+
   if (
     metrics.horizontalOverflow ||
-    metrics.stageHeight < viewport.height - 1 ||
+    (metrics.stage?.height ?? 0) < viewport.height - 1 ||
     metrics.afterwordTop < viewport.height - 1 ||
     !metrics.titleInViewport ||
-    !metrics.primaryInViewport ||
-    !metrics.routesInViewport ||
-    !metrics.identityVisible ||
-    !metrics.portraitLoaded ||
-    !metrics.menuModeCorrect ||
-    metrics.heroLinkLabels.length !== 5 ||
-    !metrics.safeSecondaryLink ||
-    badTouchTarget ||
+    !metrics.actionsInViewport ||
+    !metrics.indicatorInViewport ||
     metrics.headingCount !== 1 ||
-    metrics.introCount !== 0 ||
-    metrics.bodyOverflow === 'hidden' ||
+    !headingAccessible ||
+    metrics.titleLines.join(' ') !== 'POLY MORPHISM' ||
+    !metrics.artworkLoaded ||
+    metrics.artworkSource !== expectedArtwork ||
+    JSON.stringify(metrics.artworkDimensions) !== JSON.stringify(expectedDimensions) ||
+    uniqueArtworkRequests.length !== 1 ||
+    uniqueArtworkRequests[0] !== expectedArtwork ||
+    metrics.artworkPointerEvents !== 'none' ||
+    !metrics.menuModeCorrect ||
+    !metrics.identityModeCorrect ||
+    !actionsCorrect ||
+    JSON.stringify(metrics.routeLinks) !== JSON.stringify(['/listen', '/live', '/story', '/book']) ||
     metrics.motionState !== 'running' ||
     metrics.motionPlayState !== 'running' ||
-    !metrics.ambientAnimation.includes('home-ambient-drift') ||
-    !metrics.portraitAnimation.includes('home-portrait-breathe') ||
-    !metrics.decorativePointerEventsDisabled ||
     seriousAxeViolations.length > 0 ||
     errors.length > 0
   ) {
@@ -169,37 +193,33 @@ for (const viewport of viewports) {
 }
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1440, height: 900 }]) {
-  const touchLayout = isTouchLayout(viewport)
-  const context = await browser.newContext({ viewport, hasTouch: touchLayout, reducedMotion: 'reduce' })
-  await context.addInitScript(() => sessionStorage.setItem('internet-athi-intro-seen', 'true'))
+  const context = await browser.newContext({
+    viewport,
+    hasTouch: expectsMenu(viewport),
+    reducedMotion: 'reduce',
+  })
   const page = await context.newPage()
   await page.goto(baseUrl, { waitUntil: 'networkidle' })
   const result = await page.evaluate(() => {
-    const portrait = document.querySelector('.home-stage__portrait')
-    const image = document.querySelector('.home-stage__portrait img')
-    const scan = getComputedStyle(portrait, '::before')
-    const ambient = document.querySelector('.home-stage__ambient')
-    const fragment = document.querySelector('.portrait-fragment--left')
     const stage = document.querySelector('.home-stage')
+    const artwork = document.querySelector('.home-artwork')
+    const image = document.querySelector('.home-artwork__image')
+    const titleLine = document.querySelector('.landing-release__line > span')
     return {
-      portraitAnimation: getComputedStyle(portrait).animationName,
+      artworkAnimation: getComputedStyle(artwork).animationName,
       imageAnimation: getComputedStyle(image).animationName,
-      ambientAnimation: getComputedStyle(ambient, '::before').animationName,
-      fragmentAnimation: getComputedStyle(fragment).animationName,
-      scanDisplay: scan.display,
-      portraitOpacity: getComputedStyle(portrait).opacity,
+      titleAnimation: getComputedStyle(titleLine).animationName,
+      artworkOpacity: getComputedStyle(artwork).opacity,
       horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 2,
       motionState: stage?.getAttribute('data-motion-state'),
     }
   })
   report.reducedMotion.push({ viewport, ...result })
   if (
-    result.portraitAnimation !== 'none' ||
+    result.artworkAnimation !== 'none' ||
     result.imageAnimation !== 'none' ||
-    result.ambientAnimation !== 'none' ||
-    result.fragmentAnimation !== 'none' ||
-    result.scanDisplay !== 'none' ||
-    result.portraitOpacity !== '1' ||
+    result.titleAnimation !== 'none' ||
+    result.artworkOpacity !== '1' ||
     result.motionState !== 'paused' ||
     result.horizontalOverflow
   ) {
@@ -209,85 +229,39 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }
 }
 
 {
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-    hasTouch: false,
-    reducedMotion: 'no-preference',
-  })
+  const viewport = { width: 1868, height: 912 }
+  const context = await browser.newContext({ viewport })
   const page = await context.newPage()
   await page.goto(baseUrl, { waitUntil: 'networkidle' })
-  await page.waitForTimeout(1800)
-
-  const sampleMotion = () => page.evaluate(() => {
-    const stage = document.querySelector('.home-stage')
-    const frame = document.querySelector('.home-stage__portrait')?.getBoundingClientRect()
-    return {
-      leftTransform: getComputedStyle(document.querySelector('.portrait-fragment--left')).transform,
-      rightTransform: getComputedStyle(document.querySelector('.portrait-fragment--right')).transform,
-      portraitTransform: getComputedStyle(document.querySelector('.home-stage__portrait img')).transform,
-      frame: frame ? { x: frame.x, y: frame.y, width: frame.width, height: frame.height } : null,
-      motionState: stage?.getAttribute('data-motion-state'),
-      imagePlayState: getComputedStyle(document.querySelector('.home-stage__portrait img')).animationPlayState,
-    }
-  })
-
-  const first = await sampleMotion()
-  await page.waitForTimeout(1100)
-  const second = await sampleMotion()
-  await page.mouse.move(1390, 760)
-  await page.waitForTimeout(450)
-  const pointer = await page.evaluate(() => {
-    const stage = document.querySelector('.home-stage')
-    return {
-      ambientX: Number.parseFloat(getComputedStyle(stage).getPropertyValue('--ambient-parallax-x')),
-      ambientY: Number.parseFloat(getComputedStyle(stage).getPropertyValue('--ambient-parallax-y')),
-    }
-  })
-
-  await page.evaluate(() => {
-    const afterword = document.querySelector('.home-afterword')
-    window.scrollTo({ top: (afterword?.offsetTop ?? innerHeight) + (innerHeight * 0.5), behavior: 'instant' })
-  })
-  await page.waitForTimeout(350)
-  const paused = await sampleMotion()
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
-  await page.waitForTimeout(350)
-  const resumed = await sampleMotion()
   await page.getByRole('link', { name: 'Listen', exact: true }).click()
-  await page.goBack()
-  await page.waitForTimeout(350)
-  const returnEntrance = await page.evaluate(() => ({
-    entranceState: document.querySelector('.home-stage')?.getAttribute('data-entrance-state'),
-    frameAnimation: getComputedStyle(document.querySelector('.home-stage__portrait')).animationName,
-    imageAnimation: getComputedStyle(document.querySelector('.home-stage__portrait img')).animationName,
-    titleAnimation: getComputedStyle(document.querySelector('.home-stage__release h1')).animationName,
-  }))
-
-  report.motionLifecycle = {
-    autonomousMotionVisible: (
-      first.leftTransform !== second.leftTransform &&
-      first.rightTransform !== second.rightTransform &&
-      first.portraitTransform !== second.portraitTransform
-    ),
-    portraitFrameStable: Boolean(
-      first.frame && second.frame &&
-      Math.abs(first.frame.x - second.frame.x) < 0.5 &&
-      Math.abs(first.frame.y - second.frame.y) < 0.5 &&
-      Math.abs(first.frame.width - second.frame.width) < 0.5 &&
-      Math.abs(first.frame.height - second.frame.height) < 0.5
-    ),
-    pointerDepthResponded: Math.abs(pointer.ambientX) > 1 && Math.abs(pointer.ambientY) > 1,
-    pausedOffscreen: paused.motionState === 'paused' && paused.imagePlayState.includes('paused'),
-    resumedOnReturn: resumed.motionState === 'running' && resumed.imagePlayState.includes('running'),
-    entranceNotReplayed: (
-      returnEntrance.entranceState === 'settled' &&
-      returnEntrance.frameAnimation === 'none' &&
-      returnEntrance.imageAnimation === 'home-portrait-breathe' &&
-      returnEntrance.titleAnimation === 'none'
-    ),
-  }
-  if (Object.values(report.motionLifecycle).some((value) => value !== true)) {
-    report.failures.push({ motionLifecycle: report.motionLifecycle, first, second, pointer, paused, resumed, returnEntrance })
+  await page.goBack({ waitUntil: 'networkidle' })
+  await page.waitForTimeout(100)
+  report.returnVisit = await page.evaluate(() => {
+    const stage = document.querySelector('.home-stage')?.getBoundingClientRect()
+    const artwork = document.querySelector('.home-artwork')?.getBoundingClientRect()
+    const image = document.querySelector('.home-artwork__image')
+    return {
+      entranceState: document.querySelector('.home-stage')?.getAttribute('data-entrance-state'),
+      artworkCentered: Boolean(stage && artwork && Math.abs(
+        (stage.left + stage.width / 2) - (artwork.left + artwork.width / 2),
+      ) < 1),
+      artworkFillsViewport: Boolean(stage && artwork && (
+        Math.abs(stage.left - artwork.left) < 1 &&
+        Math.abs(stage.right - artwork.right) < 1
+      )),
+      correctArtwork: image?.currentSrc.endsWith('/assets/internet-athi-hero-desktop.png'),
+      horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 2,
+    }
+  })
+  await page.screenshot({ path: '.qa/home/1868x912-return-visit.png', fullPage: false })
+  if (
+    report.returnVisit.entranceState !== 'settled' ||
+    !report.returnVisit.artworkCentered ||
+    !report.returnVisit.artworkFillsViewport ||
+    !report.returnVisit.correctArtwork ||
+    report.returnVisit.horizontalOverflow
+  ) {
+    report.failures.push({ returnVisit: report.returnVisit })
   }
   await context.close()
 }
@@ -296,22 +270,28 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true })
   const page = await context.newPage()
   await page.goto(baseUrl, { waitUntil: 'networkidle' })
-  const introSuppressedOnTouch = await page.locator('.intro').count() === 0
-  const menuButton = page.getByRole('button', { name: 'Menu' })
+  const menuButton = page.getByRole('button', { name: 'Menu', exact: true })
   await menuButton.click()
-  const menuOpened = await page.locator('.mobile-menu__panel').isVisible()
+  const menuOpened = await page.getByRole('dialog', { name: 'Primary navigation' }).isVisible()
+  const scrollLocked = await page.evaluate(() => getComputedStyle(document.body).overflow === 'hidden')
+  await page.keyboard.press('Shift+Tab')
+  const reverseTrapWorked = await page.getByRole('link', { name: 'Return home' }).evaluate((link) => document.activeElement === link)
+  await page.keyboard.press('Tab')
+  const forwardTrapWorked = await page.getByRole('button', { name: 'Close', exact: true }).evaluate((button) => document.activeElement === button)
   await page.keyboard.press('Escape')
-  const menuClosedWithEscape = await page.locator('.mobile-menu__panel').count() === 0
+  const menuClosedWithEscape = await page.getByRole('dialog', { name: 'Primary navigation' }).count() === 0
   const focusReturned = await menuButton.evaluate((button) => document.activeElement === button)
   await menuButton.click()
   await page.locator('.mobile-menu__panel').getByRole('link', { name: /Listen/ }).click()
   const routeChanged = new URL(page.url()).pathname === '/listen'
-  const menuClosedAfterRoute = await page.locator('.mobile-menu__panel').count() === 0
+  const menuClosedAfterRoute = await page.getByRole('dialog', { name: 'Primary navigation' }).count() === 0
   const bodyScrollRestored = await page.evaluate(() => getComputedStyle(document.body).overflow !== 'hidden')
 
   report.interactions = {
-    introSuppressedOnTouch,
     menuOpened,
+    scrollLocked,
+    reverseTrapWorked,
+    forwardTrapWorked,
     menuClosedWithEscape,
     focusReturned,
     routeChanged,
@@ -326,23 +306,29 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }
 
 {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true })
-  await context.addInitScript(() => sessionStorage.setItem('internet-athi-intro-seen', 'true'))
   const page = await context.newPage()
   await page.goto(baseUrl, { waitUntil: 'networkidle' })
   report.textEnlargement = await page.evaluate(() => {
-    document.documentElement.style.fontSize = '20px'
-    const title = document.querySelector('.home-stage__release h1')?.getBoundingClientRect()
-    const primary = document.querySelector('.home-stage__actions .action-link--primary')?.getBoundingClientRect()
+    document.documentElement.style.fontSize = '32px'
+    const contained = (selector) => {
+      const bounds = document.querySelector(selector)?.getBoundingClientRect()
+      return Boolean(bounds && bounds.left >= -1 && bounds.right <= innerWidth + 1 && bounds.top >= -1 && bounds.bottom <= innerHeight + 1)
+    }
+    const wordmark = document.querySelector('.site-wordmark')?.getBoundingClientRect()
+    const menu = document.querySelector('.menu-toggle')?.getBoundingClientRect()
     return {
       horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 2,
-      titleContained: Boolean(title && title.left >= -1 && title.right <= innerWidth + 1),
-      primaryContained: Boolean(primary && primary.left >= -1 && primary.right <= innerWidth + 1),
+      actionsContained: contained('.release-actions'),
+      indicatorContained: contained('.release-indicator'),
+      headerControlsSeparated: Boolean(wordmark && menu && wordmark.right < menu.left),
     }
   })
-  if (Object.values(report.textEnlargement).some((value) => value !== false && value !== true) ||
-      report.textEnlargement.horizontalOverflow ||
-      !report.textEnlargement.titleContained ||
-      !report.textEnlargement.primaryContained) {
+  if (
+    report.textEnlargement.horizontalOverflow ||
+    !report.textEnlargement.actionsContained ||
+    !report.textEnlargement.indicatorContained ||
+    !report.textEnlargement.headerControlsSeparated
+  ) {
     report.failures.push({ textEnlargement: report.textEnlargement })
   }
   await context.close()
@@ -353,9 +339,9 @@ await writeFile('.qa/home/report.json', JSON.stringify(report, null, 2))
 
 console.log(JSON.stringify({
   viewportChecks: report.viewports.length,
-  reducedMotionChecks: report.reducedMotion,
+  reducedMotion: report.reducedMotion,
   interactions: report.interactions,
-  motionLifecycle: report.motionLifecycle,
+  returnVisit: report.returnVisit,
   textEnlargement: report.textEnlargement,
   failures: report.failures,
 }, null, 2))
