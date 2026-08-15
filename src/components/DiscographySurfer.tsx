@@ -95,7 +95,7 @@ function StaticReleaseCard({ item, index }: { item: DiscographyRelease; index: n
         <span className="discography-static-card__metadata">
           <strong className={item.title.length > 12 ? 'is-long-title' : undefined}>{item.title}</strong>
           <span>{item.releaseType.toUpperCase()} / {item.year}</span>
-          <span className="discography-static-card__action">Open in Spotify <span aria-hidden="true">↗</span></span>
+          <span className="discography-static-card__action">Open in Spotify</span>
         </span>
       </a>
     </li>
@@ -211,7 +211,7 @@ function SurferCard({
             {item.releaseType.toUpperCase()} / {item.year}
           </span>
           <span className="discography-surfer-card__action">
-            Open in Spotify <span aria-hidden="true">↗</span>
+            Open in Spotify
           </span>
         </span>
       </motion.a>
