@@ -36,26 +36,19 @@ for (const viewport of viewports) {
   })
 
   await page.goto(`${baseUrl}/live`, { waitUntil: 'networkidle' })
-  await page.locator('.performance-globe__canvas').waitFor({ state: 'visible' })
-  await page.waitForTimeout(100)
+  await page.locator('.live-map').waitFor({ state: 'visible' })
+  await page.locator('.live-map').scrollIntoViewIfNeeded()
+  await page.locator('.live-map[data-reveal-state="revealed"]').waitFor({ state: 'attached', timeout: 3000 })
+  await page.waitForTimeout(150)
 
-  const metrics = await page.evaluate(() => {
-    const canvas = document.querySelector('.performance-globe__canvas')
-    const bounds = canvas?.getBoundingClientRect()
-    const dpr = Number(canvas?.getAttribute('data-dpr') ?? 0)
-    return {
-      h1Count: document.querySelectorAll('h1').length,
-      horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
-      canvasWidth: bounds?.width ?? 0,
-      canvasHeight: bounds?.height ?? 0,
-      canvasBackingWidth: canvas instanceof HTMLCanvasElement ? canvas.width : 0,
-      dpr,
-      filters: document.querySelectorAll('.programme__filters button').length,
-      controls: document.querySelectorAll('.performance-globe__controls button').length,
-      listedEvents: document.querySelectorAll('.programme-entry').length,
-      visibleMarkers: Number(canvas?.getAttribute('data-visible-markers') ?? 0),
-    }
-  })
+  const metrics = await page.evaluate(() => ({
+    h1Count: document.querySelectorAll('h1').length,
+    horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
+    filters: document.querySelectorAll('.programme__filters button').length,
+    listedEvents: document.querySelectorAll('.programme-entry').length,
+    mapMarkers: document.querySelectorAll('.live-map__marker').length,
+    cityLabels: document.querySelectorAll('.live-map__city-label').length,
+  }))
   const axe = await new AxeBuilder({ page }).analyze()
   const seriousViolations = axe.violations
     .filter((violation) => violation.impact === 'serious' || violation.impact === 'critical')
@@ -72,31 +65,32 @@ for (const viewport of viewports) {
 const interactionContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
 const interactionPage = await interactionContext.newPage()
 await interactionPage.goto(`${baseUrl}/live`, { waitUntil: 'networkidle' })
-const canvas = interactionPage.locator('.performance-globe__canvas')
-await canvas.scrollIntoViewIfNeeded()
-await interactionPage.waitForTimeout(1400)
+const map = interactionPage.locator('.live-map')
+await map.scrollIntoViewIfNeeded()
+await interactionPage.locator('.live-map[data-reveal-state="revealed"]').waitFor({ state: 'attached', timeout: 3000 })
+await interactionPage.waitForTimeout(400)
 
-const rotationBeforePause = await canvas.getAttribute('data-rotation')
-await interactionPage.getByRole('button', { name: 'Pause rotation' }).click()
-await interactionPage.waitForTimeout(250)
-const pausedRotationOne = await canvas.getAttribute('data-rotation')
-await interactionPage.waitForTimeout(250)
-const pausedRotationTwo = await canvas.getAttribute('data-rotation')
-report.interactions.pauseStopsRotation = pausedRotationOne === pausedRotationTwo
+report.interactions.cityLabelCount = await interactionPage.locator('.live-map__city-label').count()
+report.interactions.upcomingListedCount = await interactionPage.locator('.programme-entry').count()
+report.interactions.upcomingMarkerCount = await interactionPage.locator('.live-map__marker').count()
 
-await interactionPage.getByRole('button', { name: 'Resume rotation' }).click()
-await interactionPage.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : undefined))
+const firstMarker = interactionPage.locator('.live-map__marker').first()
+const firstListRow = interactionPage.locator('.programme-entry__select').first()
+await firstListRow.hover()
+await interactionPage.waitForTimeout(100)
+report.interactions.listHoverHighlightsMarker = (await firstMarker.getAttribute('class') ?? '').includes('is-highlighted')
 await interactionPage.mouse.move(10, 10)
-await interactionPage.waitForTimeout(1200)
-const rotationAfterResume = await canvas.getAttribute('data-rotation')
-report.interactions.resumeRestartsRotation = rotationBeforePause !== rotationAfterResume
 
 await interactionPage.getByRole('button', { name: 'Past archive' }).click()
-report.interactions.pastCount = await interactionPage.locator('.programme-entry').count()
+report.interactions.pastListedCount = await interactionPage.locator('.programme-entry').count()
+report.interactions.pastMarkerCount = await interactionPage.locator('.live-map__marker').count()
+
 await interactionPage.getByRole('button', { name: 'All' }).click()
-report.interactions.allCount = await interactionPage.locator('.programme-entry').count()
+report.interactions.allListedCount = await interactionPage.locator('.programme-entry').count()
+report.interactions.allMarkerCount = await interactionPage.locator('.live-map__marker').count()
+report.interactions.hasGroupedMarker = await interactionPage.locator('.live-map__marker-count').count() === 1
+
 await interactionPage.getByRole('button', { name: 'Upcoming', exact: true }).click()
-report.interactions.upcomingCount = await interactionPage.locator('.programme-entry').count()
 
 const firstEventButton = interactionPage.locator('.programme-entry__select').first()
 const firstEventTitle = await firstEventButton.locator('strong').innerText()
@@ -106,40 +100,28 @@ report.interactions.listSelectionOpensDetails = await interactionPage.getByRole(
 report.interactions.detailHasCoreActions = await interactionPage.locator('.programme-detail__actions').getByRole('link', { name: /Get tickets/i }).isVisible()
   && await interactionPage.locator('.programme-detail__actions').getByRole('button', { name: /Add to calendar/i }).isVisible()
   && await interactionPage.locator('.programme-detail__actions').getByRole('link', { name: /Directions/i }).isVisible()
-report.interactions.selectionPausesRotation = await canvas.getAttribute('data-rotation-state') === 'paused'
 
 await interactionPage.keyboard.press('Escape')
 await interactionPage.locator('.programme-detail').waitFor({ state: 'detached' })
 report.interactions.escapeReturnsFocus = await firstEventButton.evaluate((element) => document.activeElement === element)
-await interactionPage.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : undefined))
-await interactionPage.mouse.move(10, 10)
-const rotationAfterClose = await canvas.getAttribute('data-rotation')
-await interactionPage.waitForTimeout(1500)
-report.interactions.closeResumesRotation = rotationAfterClose !== await canvas.getAttribute('data-rotation')
 
-const marker = interactionPage.locator('.performance-globe__marker-hit[data-visible="true"]').first()
-await marker.focus()
+await interactionPage.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : undefined))
+const markerButton = interactionPage.locator('.live-map__marker').first()
+await markerButton.focus()
 await interactionPage.waitForTimeout(120)
-await marker.click()
+await markerButton.click()
 await interactionPage.locator('.programme-detail').waitFor({ state: 'visible' })
 report.interactions.markerSelectionOpensDetails = true
 await interactionPage.getByRole('button', { name: 'Close event details' }).click()
 
-await canvas.scrollIntoViewIfNeeded()
-const bounds = await canvas.boundingBox()
+await map.scrollIntoViewIfNeeded()
+const bounds = await map.boundingBox()
 if (bounds) {
-  await interactionPage.mouse.move(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.45)
-  const dragStart = await canvas.getAttribute('data-rotation')
-  await interactionPage.mouse.down()
-  await interactionPage.mouse.move(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.45, { steps: 6 })
-  await interactionPage.mouse.up()
-  report.interactions.horizontalDragRotates = dragStart !== await canvas.getAttribute('data-rotation')
-
   await interactionPage.mouse.move(bounds.x + bounds.width * 0.5, bounds.y + bounds.height * 0.45)
   const scrollStart = await interactionPage.evaluate(() => window.scrollY)
   await interactionPage.mouse.wheel(0, 500)
   await interactionPage.waitForTimeout(120)
-  report.interactions.globeDoesNotTrapVerticalScroll = await interactionPage.evaluate(() => window.scrollY) > scrollStart
+  report.interactions.mapDoesNotTrapVerticalScroll = await interactionPage.evaluate(() => window.scrollY) > scrollStart
 }
 
 await interactionContext.close()
@@ -150,13 +132,13 @@ const reducedContext = await browser.newContext({
 })
 const reducedPage = await reducedContext.newPage()
 await reducedPage.goto(`${baseUrl}/live`, { waitUntil: 'networkidle' })
-const reducedCanvas = reducedPage.locator('.performance-globe__canvas')
-await reducedCanvas.scrollIntoViewIfNeeded()
-await reducedPage.waitForTimeout(120)
-const reducedRotationOne = await reducedCanvas.getAttribute('data-rotation')
-await reducedPage.waitForTimeout(500)
-const reducedRotationTwo = await reducedCanvas.getAttribute('data-rotation')
-report.interactions.reducedMotionStopsAutoRotation = reducedRotationOne === reducedRotationTwo
+const reducedMap = reducedPage.locator('.live-map')
+await reducedMap.scrollIntoViewIfNeeded()
+await reducedPage.locator('.live-map[data-reveal-state="revealed"]').waitFor({ state: 'attached', timeout: 3000 })
+report.interactions.reducedMotionMarkersVisible = await reducedPage.locator('.live-map__marker').first().isVisible()
+const reducedFirstMarker = reducedPage.locator('.live-map__marker').first()
+await reducedFirstMarker.click()
+report.interactions.reducedMotionMarkerClickable = await reducedPage.locator('.programme-detail').isVisible()
 await reducedContext.close()
 
 await browser.close()
@@ -167,25 +149,27 @@ for (const page of report.pages) {
   if (
     metrics.h1Count !== 1
     || metrics.horizontalOverflow
-    || metrics.canvasWidth <= 0
-    || metrics.canvasHeight <= 0
-    || metrics.canvasBackingWidth > metrics.canvasWidth * 2 + 2
-    || metrics.dpr <= 0
-    || metrics.dpr > 2
     || metrics.filters !== 3
-    || metrics.controls !== 4
     || metrics.listedEvents !== 2
-    || metrics.visibleMarkers < 1
+    || metrics.mapMarkers !== 2
+    || metrics.cityLabels !== 12
     || page.seriousViolations.length
     || page.runtimeErrors.length
   ) failures.push(page)
 }
 
+const expectedCounts = {
+  cityLabelCount: 12,
+  upcomingListedCount: 2,
+  upcomingMarkerCount: 2,
+  pastListedCount: 4,
+  pastMarkerCount: 4,
+  allListedCount: 6,
+  allMarkerCount: 5,
+}
 for (const [name, value] of Object.entries(report.interactions)) {
-  const expectedCounts = { upcomingCount: 2, pastCount: 4, allCount: 6 }
-  if (name in expectedCounts ? value !== expectedCounts[name] : value !== true) {
-    failures.push({ interaction: name, value })
-  }
+  const expected = name in expectedCounts ? expectedCounts[name] : true
+  if (value !== expected) failures.push({ interaction: name, value, expected })
 }
 
 await writeFile('.qa/live-report.json', JSON.stringify({ ...report, failures }, null, 2))

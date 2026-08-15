@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(disown)",
+      "Bash(QA_BASE_URL=http://127.0.0.1:4173 npm run qa:live)",
+      "Bash(curl -sS -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://127.0.0.1:4173/live --max-time 5)",
+      "Bash(curl -sS -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:4173/live --max-time 5)",
+      "Bash(QA_BASE_URL=http://localhost:4173 npm run qa:live)"
+    ]
+  }
+}

@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react'
 import { ExternalLink } from '../components/ExternalLink'
-import { PerformanceGlobe } from '../components/PerformanceGlobe'
+import { LiveMap, type LiveMapLocationGroup } from '../components/LiveMap'
 import { Seo } from '../components/Seo'
 import { liveEvents } from '../content/artist'
 import type { LiveEvent } from '../content/types'
@@ -15,6 +15,7 @@ import {
   formatLiveEventDate,
   formatLiveEventTime,
   getLiveEventStatus,
+  groupLiveEventsByLocation,
   sortLiveEvents,
   type LiveEventStatus,
 } from '../lib/liveEvents'
@@ -111,9 +112,15 @@ export function LivePage() {
   const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null)
   const [detailsVisible, setDetailsVisible] = useState(false)
   const lastTriggerRef = useRef<HTMLElement | null>(null)
-  const selectionTimerRef = useRef(0)
   const selectedEventIdRef = useRef(selectedEventId)
   selectedEventIdRef.current = selectedEventId
+
+  const featuredEventId = useMemo(() => {
+    const ongoing = liveEvents.find((event) => getLiveEventStatus(event, now) === 'ongoing')
+    if (ongoing) return ongoing.id
+    const upcoming = sortLiveEvents(liveEvents.filter((event) => getLiveEventStatus(event, now) !== 'past'))
+    return upcoming[0]?.id ?? null
+  }, [now])
 
   const counts = useMemo(() => {
     return liveEvents.reduce((result, event) => {
@@ -138,12 +145,18 @@ export function LivePage() {
     return [...future, ...past]
   }, [filter, now])
 
+  const locationGroups: LiveMapLocationGroup[] = useMemo(() => (
+    groupLiveEventsByLocation(events).map((group) => ({
+      ...group,
+      isPast: group.events.every((event) => getLiveEventStatus(event, now) === 'past'),
+    }))
+  ), [events, now])
+
   const selectedEvent = selectedEventId
     ? liveEvents.find((event) => event.id === selectedEventId) ?? null
     : null
 
   const closeDetails = useCallback(() => {
-    window.clearTimeout(selectionTimerRef.current)
     setDetailsVisible(false)
     setSelectedEventId(null)
     setHighlightedEventId(null)
@@ -154,24 +167,13 @@ export function LivePage() {
   }, [])
 
   const selectEvent = useCallback((eventId: string, trigger: HTMLElement) => {
-    window.clearTimeout(selectionTimerRef.current)
     lastTriggerRef.current = trigger
     setSelectedEventId(eventId)
     setHighlightedEventId(eventId)
-    setDetailsVisible(false)
-    selectionTimerRef.current = window.setTimeout(() => {
-      if (selectedEventIdRef.current === eventId) setDetailsVisible(true)
-    }, 980)
-  }, [])
-
-  const finishOrientation = useCallback((eventId: string) => {
-    if (selectedEventIdRef.current !== eventId) return
-    window.clearTimeout(selectionTimerRef.current)
     setDetailsVisible(true)
   }, [])
 
   const changeFilter = useCallback((nextFilter: EventFilter) => {
-    window.clearTimeout(selectionTimerRef.current)
     setSelectedEventId(null)
     setHighlightedEventId(null)
     setDetailsVisible(false)
@@ -186,7 +188,6 @@ export function LivePage() {
     window.addEventListener('keydown', onKeyDown)
     return () => {
       window.clearInterval(statusTimer)
-      window.clearTimeout(selectionTimerRef.current)
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [closeDetails])
@@ -198,17 +199,17 @@ export function LivePage() {
         description="Explore Internet Athi's verified live programme by date and performance location."
         path="/live"
       />
-      <header className="scene-heading scene-heading--live">
-        <p className="index-label">Archive 02 / Live</p>
-        <h1>Live programme</h1>
-        <p className="scene-heading__lede">Performances across the map.</p>
-      </header>
-
       <section
         className={`programme live-map-programme${selectedEvent && detailsVisible ? ' is-detail-open' : ''}`}
-        aria-label="Performance programme and location globe"
+        aria-label="Performance programme and location map"
       >
         <div className="programme__directory-head">
+          <div className="programme__heading">
+            <p className="index-label">Archive 02 / Live</p>
+            <h1>Live programme</h1>
+            <p className="programme__heading-lede">Songs, rooms and gatherings across South Africa.</p>
+          </div>
+          <div className="programme__divider" aria-hidden="true" />
           <div>
             <p className="index-label">Touring coordinates / 2026</p>
             <h2>Dates, rooms and gatherings.</h2>
@@ -231,21 +232,26 @@ export function LivePage() {
           </div>
         </div>
 
-        <div className="programme__globe-shell">
-          <div className="programme__globe-caption" aria-hidden="true">
-            <span>Performance geography</span>
-            <span>Drag / select / explore</span>
+        <div className="programme__map-shell">
+          <div className="programme__map-caption" aria-hidden="true">
+            <span>Performance geography / South Africa</span>
           </div>
-          <PerformanceGlobe
-            events={events}
+          <LiveMap
+            locationGroups={locationGroups}
             selectedEventId={selectedEventId}
             highlightedEventId={highlightedEventId}
+            featuredEventId={featuredEventId}
             onSelect={selectEvent}
             onHighlight={setHighlightedEventId}
-            onOrientationComplete={finishOrientation}
           />
           <p className="programme__map-key">
-            <span aria-hidden="true" /> Marker / verified public performance location
+            <span className="programme__map-key-icon programme__map-key-icon--location" aria-hidden="true" />
+            Performance location
+            <span className="programme__map-key-icon programme__map-key-icon--past" aria-hidden="true" />
+            Past
+            <span className="programme__map-key-icon programme__map-key-icon--selected" aria-hidden="true" />
+            Selected
+            <span className="programme__map-key-hint">Select a marker to open the performance card</span>
           </p>
         </div>
 
@@ -299,6 +305,7 @@ export function LivePage() {
               <button type="button" onClick={() => changeFilter('past')}>View past programme</button>
             </div>
           )}
+          <Link className="programme__quiet-request" to="/book">Request a show</Link>
         </div>
 
         <div className="programme__request">

@@ -20,6 +20,35 @@ export function sortLiveEvents(events: LiveEvent[], direction: 'asc' | 'desc' = 
   })
 }
 
+export interface LiveEventLocationGroup {
+  key: string
+  city: string
+  latitude: number
+  longitude: number
+  events: LiveEvent[]
+}
+
+export function groupLiveEventsByLocation(events: LiveEvent[]): LiveEventLocationGroup[] {
+  const groups = new Map<string, LiveEventLocationGroup>()
+
+  for (const event of events) {
+    const existing = groups.get(event.city)
+    if (existing) {
+      existing.events.push(event)
+    } else {
+      groups.set(event.city, {
+        key: event.city,
+        city: event.city,
+        latitude: event.latitude,
+        longitude: event.longitude,
+        events: [event],
+      })
+    }
+  }
+
+  return [...groups.values()]
+}
+
 function dateParts(value: string, timeZone: string) {
   const formatter = new Intl.DateTimeFormat('en-ZA', {
     day: 'numeric',
