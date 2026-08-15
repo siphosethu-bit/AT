@@ -231,54 +231,218 @@ ul {
   position: fixed;
   z-index: 35;
   inset: 0;
-}
-
-.mobile-menu__backdrop {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  border: 0;
-  background: rgba(11, 10, 9, 0.76);
-}
-
-.mobile-menu__panel {
-  position: absolute;
-  top: var(--header-height);
-  right: 0;
   display: flex;
-  width: min(90vw, 30rem);
-  height: calc(100dvh - var(--header-height));
-  padding: 2rem var(--page-pad) 2.5rem;
   flex-direction: column;
-  background: var(--paper);
-  color: var(--ink);
+  width: 100%;
+  height: 100dvh;
+  padding:
+    calc(var(--header-height) + max(1.25rem, env(safe-area-inset-top)))
+    max(var(--page-pad), env(safe-area-inset-right))
+    max(1.75rem, env(safe-area-inset-bottom))
+    max(var(--page-pad), env(safe-area-inset-left));
+  overflow-y: auto;
+  background: #0a0908;
+  color: var(--bone);
+  animation: mobile-menu-enter 340ms var(--motion-ease) both;
 }
 
-.mobile-menu__panel .index-label {
-  margin-bottom: 2rem;
-  color: #6f6961;
+.mobile-menu.is-closing {
+  animation: mobile-menu-exit 300ms var(--motion-ease) both;
 }
+
+.mobile-menu__artwork {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.4;
+  background-image:
+    linear-gradient(180deg, rgba(10, 9, 8, 0.35) 0%, rgba(10, 9, 8, 0.6) 46%, #0a0908 90%),
+    linear-gradient(90deg, rgba(10, 9, 8, 0.4), transparent 55%),
+    url('/assets/internet-athi-hero-mobile.png');
+  background-repeat: no-repeat;
+  background-position: top center;
+  background-size: cover;
+  pointer-events: none;
+}
+
+.mobile-menu__eyebrow {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  margin: 0 0 clamp(1.5rem, 5svh, 2.5rem);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  color: var(--clay);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.mobile-menu__eyebrow::after {
+  width: 2.25rem;
+  height: 1px;
+  content: '';
+  background: var(--clay);
+}
+
+.mobile-menu__list {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  list-style: none;
+}
+
+.mobile-menu__list li {
+  border-bottom: 1px solid rgba(232, 224, 210, 0.14);
+  animation: mobile-menu-row-enter 420ms var(--motion-ease) both;
+}
+
+.mobile-menu__list li:nth-child(1) { animation-delay: 90ms; }
+.mobile-menu__list li:nth-child(2) { animation-delay: 140ms; }
+.mobile-menu__list li:nth-child(3) { animation-delay: 190ms; }
+.mobile-menu__list li:nth-child(4) { animation-delay: 240ms; }
 
 .mobile-menu__link {
+  position: relative;
   display: grid;
-  padding: 0.9rem 0;
-  grid-template-columns: 3rem 1fr;
-  align-items: baseline;
-  border-bottom: 1px solid rgba(11, 10, 9, 0.2);
-  font-family: var(--serif);
-  font-size: clamp(2.2rem, 12vw, 4.5rem);
-  line-height: 1;
+  min-height: 64px;
+  padding: 1rem 0;
+  grid-template-columns: 2.5rem 1fr auto;
+  column-gap: 0.9rem;
+  color: var(--bone);
 }
 
-.mobile-menu__link span {
+.mobile-menu__link-index {
+  grid-row: 1 / span 2;
+  grid-column: 1;
+  align-self: center;
+  padding-right: 0.9rem;
+  border-right: 1px solid rgba(177, 95, 52, 0.35);
+  color: var(--clay);
   font-family: var(--mono);
   font-size: 0.65rem;
 }
 
+.mobile-menu__link-title {
+  grid-row: 1;
+  grid-column: 2;
+  color: var(--bone);
+  font-family: var(--serif);
+  font-size: clamp(2.3rem, 11.5vw, 3.4rem);
+  line-height: 1;
+  transition: transform 220ms var(--motion-ease);
+}
+
+.mobile-menu__link-descriptor {
+  grid-row: 2;
+  grid-column: 2;
+  margin-top: 0.4rem;
+  color: var(--smoke);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: color 180ms ease;
+}
+
+.mobile-menu__link-arrow {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  align-self: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--clay);
+  opacity: 0.65;
+  transition: transform 220ms var(--motion-ease), opacity 180ms ease;
+}
+
+.mobile-menu__link:hover .mobile-menu__link-title,
+.mobile-menu__link:focus-visible .mobile-menu__link-title,
+.mobile-menu__link.is-active .mobile-menu__link-title {
+  transform: translateX(6px);
+}
+
+.mobile-menu__link:hover .mobile-menu__link-arrow,
+.mobile-menu__link:focus-visible .mobile-menu__link-arrow,
+.mobile-menu__link.is-active .mobile-menu__link-arrow {
+  opacity: 1;
+  transform: translateX(3px);
+}
+
+.mobile-menu__link.is-active .mobile-menu__link-descriptor {
+  color: var(--bone);
+}
+
+.mobile-menu__link:focus-visible {
+  outline: 1px solid var(--clay);
+  outline-offset: 6px;
+}
+
 .mobile-menu__home {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 44px;
   margin-top: auto;
-  text-decoration: underline;
-  text-underline-offset: 0.3em;
+  padding-top: clamp(1.75rem, 6svh, 2.5rem);
+  align-items: center;
+  gap: 0.85rem;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  animation: mobile-menu-fade-in 420ms var(--motion-ease) 380ms both;
+}
+
+.mobile-menu__home-icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--clay);
+}
+
+.mobile-menu__home-line {
+  height: 1px;
+  flex: 1;
+  background: rgba(232, 224, 210, 0.22);
+}
+
+.mobile-menu__home-arrow {
+  width: 1rem;
+  height: 1rem;
+  color: var(--clay);
+  transition: transform 220ms var(--motion-ease);
+}
+
+.mobile-menu__home:hover .mobile-menu__home-arrow,
+.mobile-menu__home:focus-visible .mobile-menu__home-arrow {
+  transform: translateX(4px);
+}
+
+@keyframes mobile-menu-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes mobile-menu-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes mobile-menu-row-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes mobile-menu-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .site-footer {
@@ -4770,9 +4934,8 @@ body:has(.home-stage)::before {
     display: none;
   }
 
-  .site-header--home + .mobile-menu .mobile-menu__panel {
-    top: 3.55rem;
-    height: calc(100dvh - 3.55rem);
+  .site-header--home + .mobile-menu {
+    padding-top: calc(3.55rem + max(1.25rem, env(safe-area-inset-top)));
   }
 
   .home-stage {
@@ -4913,9 +5076,8 @@ body:has(.home-stage)::before {
     display: none;
   }
 
-  .site-header--home + .mobile-menu .mobile-menu__panel {
-    top: 3.4rem;
-    height: calc(100dvh - 3.4rem);
+  .site-header--home + .mobile-menu {
+    padding-top: calc(3.4rem + max(1.25rem, env(safe-area-inset-top)));
   }
 
   .home-stage {
@@ -4981,62 +5143,6 @@ body:has(.home-stage)::before {
   }
 }
 
-.mobile-menu {
-  z-index: 35;
-  animation: ia-menu-fade 180ms ease both;
-}
-
-.mobile-menu__backdrop {
-  background: rgba(7, 7, 7, 0.82);
-}
-
-.mobile-menu__panel {
-  width: min(100%, 38rem);
-  border-top: 1px solid rgba(177, 95, 52, 0.5);
-  border-left: 1px solid rgba(177, 95, 52, 0.18);
-  background:
-    radial-gradient(circle at 90% 15%, rgba(111, 57, 32, 0.17), transparent 23rem),
-    #0a0908;
-  color: var(--bone);
-  animation: ia-menu-panel-enter 320ms var(--motion-ease) both;
-}
-
-.mobile-menu__panel .index-label {
-  color: var(--clay);
-}
-
-.mobile-menu__link {
-  border-bottom-color: rgba(232, 224, 210, 0.16);
-  color: var(--bone);
-}
-
-.mobile-menu__link:hover,
-.mobile-menu__link:focus-visible {
-  color: var(--clay);
-}
-
-.mobile-menu__link span {
-  color: var(--clay);
-}
-
-.mobile-menu__home {
-  color: var(--smoke);
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-@keyframes ia-menu-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes ia-menu-panel-enter {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .home-artwork,
   .home-artwork__image,
@@ -5046,7 +5152,8 @@ body:has(.home-stage)::before {
   .artist-introduction,
   .release-indicator,
   .mobile-menu,
-  .mobile-menu__panel {
+  .mobile-menu__list li,
+  .mobile-menu__home {
     opacity: 1;
     transform: none;
     animation: none !important;

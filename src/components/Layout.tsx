@@ -1,21 +1,30 @@
 import { useEffect, useRef, useState, type PropsWithChildren } from 'react'
+import { useReducedMotion } from 'framer-motion'
 import { artist, socialProfiles } from '../content/artist'
 import { Link, NavLink, useRouter } from '../lib/router'
+import { ArrowIcon, HomeIcon } from './MenuIcons'
 import { ExternalLink } from './ExternalLink'
 
 const navigation = [
-  { to: '/listen', label: 'Listen', index: '01' },
-  { to: '/live', label: 'Live', index: '02' },
-  { to: '/story', label: 'Story', index: '03' },
-  { to: '/book', label: 'Book', index: '04' },
+  { to: '/listen', label: 'Listen', index: '01', descriptor: 'Music' },
+  { to: '/live', label: 'Live', index: '02', descriptor: 'Performances' },
+  { to: '/story', label: 'Story', index: '03', descriptor: 'Biography' },
+  { to: '/book', label: 'Book', index: '04', descriptor: 'Bookings' },
 ]
+
+const MENU_CLOSE_DURATION = 320
 
 export function Layout({ children }: PropsWithChildren) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuClosing, setMenuClosing] = useState(false)
   const { pathname } = useRouter()
   const menuButton = useRef<HTMLButtonElement>(null)
   const menuPanel = useRef<HTMLElement>(null)
+  const wasOpenRef = useRef(false)
+  const closeTimeout = useRef<number | undefined>(undefined)
+  const reducedMotion = useReducedMotion()
   const isHome = pathname === '/'
+  const menuVisible = menuOpen || menuClosing
 
   useEffect(() => {
     setMenuOpen(false)
@@ -23,7 +32,24 @@ export function Layout({ children }: PropsWithChildren) {
   }, [pathname])
 
   useEffect(() => {
-    if (!menuOpen) return
+    if (menuOpen) {
+      window.clearTimeout(closeTimeout.current)
+      setMenuClosing(false)
+      wasOpenRef.current = true
+      return
+    }
+
+    if (!wasOpenRef.current) return
+    wasOpenRef.current = false
+
+    if (reducedMotion) return
+    setMenuClosing(true)
+    closeTimeout.current = window.setTimeout(() => setMenuClosing(false), MENU_CLOSE_DURATION)
+    return () => window.clearTimeout(closeTimeout.current)
+  }, [menuOpen, reducedMotion])
+
+  useEffect(() => {
+    if (!menuVisible) return
 
     const bodyOverflow = document.body.style.overflow
     const main = document.getElementById('main-content')
@@ -65,7 +91,7 @@ export function Layout({ children }: PropsWithChildren) {
       main?.removeAttribute('inert')
       footer?.removeAttribute('inert')
     }
-  }, [menuOpen])
+  }, [menuVisible])
 
   return (
     <div className="site-shell">
@@ -104,42 +130,46 @@ export function Layout({ children }: PropsWithChildren) {
         </button>
       </header>
 
-      {menuOpen ? (
-        <div
-          className="mobile-menu"
+      {menuVisible ? (
+        <nav
+          ref={menuPanel}
           id="mobile-navigation"
+          className={menuClosing ? 'mobile-menu is-closing' : 'mobile-menu'}
           role="dialog"
           aria-modal="true"
           aria-label="Primary navigation"
         >
-          <button
-            className="mobile-menu__backdrop"
-            type="button"
-            aria-label="Close navigation"
-            tabIndex={-1}
-            onClick={() => {
-              setMenuOpen(false)
-              menuButton.current?.focus()
-            }}
-          />
-          <nav ref={menuPanel} className="mobile-menu__panel" aria-label="Mobile navigation">
-            <p className="index-label">The polymorphic archive</p>
+          <div className="mobile-menu__artwork" aria-hidden="true" />
+          <p className="mobile-menu__eyebrow">The Polymorphic Archive</p>
+          <ol className="mobile-menu__list">
             {navigation.map((item) => (
-              <NavLink key={item.to} to={item.to} className="mobile-menu__link">
-                <span>{item.index}</span>
-                {item.label}
-              </NavLink>
+              <li key={item.to}>
+                <NavLink
+                  to={item.to}
+                  className={({ isActive }) => (isActive ? 'mobile-menu__link is-active' : 'mobile-menu__link')}
+                >
+                  <span className="mobile-menu__link-index" aria-hidden="true">{item.index}</span>
+                  <span className="mobile-menu__link-title">{item.label}</span>
+                  <span className="mobile-menu__link-descriptor">{item.descriptor}</span>
+                  <ArrowIcon className="mobile-menu__link-arrow" />
+                </NavLink>
+              </li>
             ))}
-            <NavLink to="/" className="mobile-menu__home">Return home</NavLink>
-          </nav>
-        </div>
+          </ol>
+          <NavLink to="/" className="mobile-menu__home">
+            <HomeIcon className="mobile-menu__home-icon" />
+            <span>Return home</span>
+            <span className="mobile-menu__home-line" aria-hidden="true" />
+            <ArrowIcon className="mobile-menu__home-arrow" />
+          </NavLink>
+        </nav>
       ) : null}
 
-      <main id="main-content" tabIndex={-1} aria-hidden={menuOpen || undefined}>
+      <main id="main-content" tabIndex={-1} aria-hidden={menuVisible || undefined}>
         {children}
       </main>
 
-      <footer className="site-footer" aria-hidden={menuOpen || undefined}>
+      <footer className="site-footer" aria-hidden={menuVisible || undefined}>
         <div>
           <p className="site-footer__name">Internet Athi</p>
           <p>{artist.location}</p>
