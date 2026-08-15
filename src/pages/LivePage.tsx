@@ -76,12 +76,12 @@ function EventDetail({ event, onClose }: { event: LiveEvent; onClose: () => void
 
       <div className="programme-detail__actions">
         {showBookingActions && event.ticketUrl ? (
-          <ExternalLink className="action-link action-link--primary" href={event.ticketUrl} showArrow>
+          <ExternalLink className="action-link action-link--primary" href={event.ticketUrl}>
             Get tickets
           </ExternalLink>
         ) : null}
         {showBookingActions && event.rsvpUrl ? (
-          <ExternalLink className="action-link action-link--primary" href={event.rsvpUrl} showArrow>
+          <ExternalLink className="action-link action-link--primary" href={event.rsvpUrl}>
             RSVP
           </ExternalLink>
         ) : null}
@@ -91,7 +91,7 @@ function EventDetail({ event, onClose }: { event: LiveEvent; onClose: () => void
           </button>
         ) : null}
         {event.directionsUrl ? (
-          <ExternalLink className="action-link action-link--quiet" href={event.directionsUrl} showArrow>
+          <ExternalLink className="action-link action-link--quiet" href={event.directionsUrl}>
             Directions
           </ExternalLink>
         ) : null}
