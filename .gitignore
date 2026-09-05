@@ -5,3 +5,6 @@ dist
 *.log
 .qa
 qa-*.png
+.env
+.env.*
+!.env.example

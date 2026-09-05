@@ -1,87 +1,187 @@
+import { useRef, useState } from 'react'
 import { ExternalLink } from '../components/ExternalLink'
 import { Seo } from '../components/Seo'
 import { pressItems } from '../content/artist'
 
-const glyphLines = Array.from({ length: 14 }, (_, index) => (
-  `${String(index + 1).padStart(2, '0')}  IA / POLY / MORPH / ATHI / FORM / LOVE / `
-)).join('\n')
+const interviewUrl = 'https://youtu.be/85A_6MNthnI'
+
+const storyChapters = [
+  {
+    index: '01 / Expression',
+    title: 'Writing came first.',
+    copy: 'Born in Khayelitsha, Athi first found public expression through essays, poetry and performance. Music arrived in stages, carrying the same attention to language into melody and arrangement.',
+  },
+  {
+    index: '02 / The path',
+    title: 'The route was never linear.',
+    copy: 'Computer science studies and five years working in technology shaped the way he builds. Structure, experimentation and human feeling now sit inside the same creative practice.',
+  },
+  {
+    index: '03 / The name',
+    title: 'Internet is a place of connection.',
+    copy: 'Athi kept his real name because the songs begin with lived experience. Internet describes how the work travels, and how a community grew through learning, sharing and direct exchange.',
+  },
+  {
+    index: '04 / Polymorphism',
+    title: 'Love changes form.',
+    copy: 'The album borrows a computer science idea: one entity can exist in many forms. Here, love appears through romance, friendship, family and a wider care for people.',
+  },
+  {
+    index: '05 / Live',
+    title: 'The ensemble completes the language.',
+    copy: 'Trust and chemistry hold the live band together. Brass, strings, rhythm and voice bring collective energy to songs first shaped through writing and careful arrangement.',
+  },
+]
 
 export function StoryPage() {
+  const playerRef = useRef<HTMLIFrameElement>(null)
+  const [isMuted, setIsMuted] = useState(true)
+  const reducedMotion = typeof window !== 'undefined'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const playerQuery = reducedMotion
+    ? 'mute=1&controls=1&playsinline=1&rel=0&cc_load_policy=1&enablejsapi=1'
+    : 'autoplay=1&mute=1&controls=1&playsinline=1&rel=0&cc_load_policy=1&enablejsapi=1'
+
+  const sendPlayerCommand = (command: string, args: number[] = []) => {
+    playerRef.current?.contentWindow?.postMessage(JSON.stringify({
+      event: 'command',
+      func: command,
+      args,
+    }), '*')
+  }
+
+  const toggleSound = () => {
+    if (isMuted) {
+      sendPlayerCommand('setVolume', [100])
+      sendPlayerCommand('unMute')
+      sendPlayerCommand('playVideo')
+    } else {
+      sendPlayerCommand('mute')
+    }
+    setIsMuted((muted) => !muted)
+  }
+
   return (
     <>
       <Seo
         title="Story | Internet Athi"
-        description="Read the verified story behind Internet Athi, the idea of Polymorphism, and his relationship with writing, technology, and live music."
+        description="Hear Internet Athi tell his story, then explore the writing, live instrumentation, imagery and ideas behind Polymorphism."
         path="/story"
       />
-      <header className="scene-heading scene-heading--story">
-        <p className="index-label">Archive 03 / Story</p>
-        <h1>A life in<br />multiple forms.</h1>
-      </header>
 
-      <section className="story-opening" aria-labelledby="story-introduction">
-        <figure className="story-opening__portrait">
-          <img
-            src="/assets/athi-wide.webp"
-            alt="Close portrait of Internet Athi looking toward the camera"
-            width="712"
-            height="251"
-            fetchPriority="high"
-          />
-          <figcaption className="index-label">Portrait / form 03</figcaption>
+      <section className="story-film" aria-labelledby="story-title">
+        <div className="story-film__sticky">
+          <div className="story-film__media">
+            <iframe
+              ref={playerRef}
+              src={`https://www.youtube-nocookie.com/embed/85A_6MNthnI?${playerQuery}`}
+              title="Internet Athi: Singing of Worlds Worth Inheriting, an interview by iQHAWE Magazine"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
+          </div>
+          <div className="story-film__shade" aria-hidden="true" />
+          <div className="story-film__opening">
+            <div>
+              <p className="index-label">Archive 03 / Story</p>
+              <h1 id="story-title">In his<br />own words.</h1>
+            </div>
+            <div className="story-film__details">
+              <p>Internet Athi: Singing of Worlds Worth Inheriting</p>
+              <p>Interview by iQHAWE Magazine</p>
+              <p>{reducedMotion ? 'Press play to begin' : 'Playing muted. Use the player controls for sound.'}</p>
+            </div>
+          </div>
+          <div className="story-film__edge-note" aria-hidden="true">
+            <span>Scroll to read</span>
+            <span>Film / 01</span>
+          </div>
+          <ExternalLink className="story-film__source" href={interviewUrl} showArrow>
+            Open interview on YouTube
+          </ExternalLink>
+          <button
+            className={`story-film__sound${isMuted ? '' : ' is-on'}`}
+            type="button"
+            aria-label={isMuted ? 'Turn interview sound on' : 'Mute interview'}
+            aria-pressed={!isMuted}
+            onClick={toggleSound}
+          >
+            <span className="story-film__sound-mark" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            <span>{isMuted ? 'Sound on' : 'Mute'}</span>
+          </button>
+        </div>
+
+        <div className="story-film__chapters">
+          {storyChapters.map((chapter, index) => (
+            <article
+              className={`story-film__chapter story-film__chapter--${index + 1}`}
+              key={chapter.index}
+            >
+              <p className="index-label">{chapter.index}</p>
+              <h2>{chapter.title}</h2>
+              <p>{chapter.copy}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="story-portrait-feature" aria-labelledby="portrait-essay-title">
+        <header className="story-portrait-feature__copy">
+          <p className="index-label">Portrait study / One frame</p>
+          <h2 id="portrait-essay-title">The person<br />inside the work.</h2>
+          <p>
+            Polymorphism does not require every version to appear at once. In one quiet frame, Athi holds still while light, texture and shadow carry the rest of the story.
+          </p>
+        </header>
+
+        <figure className="story-portrait-feature__figure">
+          <div className="story-portrait-feature__image">
+            <img src="/assets/story/athi-warm.webp" alt="Internet Athi in a textured brown hat, held in warm side light" width="551" height="551" loading="lazy" />
+            <span aria-hidden="true">IA / 01</span>
+          </div>
+          <figcaption>
+            <span>Portrait 01 / Interior light</span>
+            <span>Cape Town / South Africa</span>
+          </figcaption>
         </figure>
-        <div className="story-opening__copy">
-          <p className="index-label">Khayelitsha to Cape Town</p>
-          <h2 id="story-introduction">Writing came first.</h2>
-          <p>
-            Internet Athi was born in Khayelitsha, Cape Town. Writing, poetry and essays gave him an early route into public expression. He later studied computer science and worked in technology for five years before committing to music full time.
-          </p>
-          <p>
-            That history remains present in the work. Human feeling and careful structure are not opposites here. They are part of the same practice.
-          </p>
-        </div>
       </section>
 
-      <section className="story-chapters" aria-label="Story chapters">
-        <article>
-          <p className="index-label">01 / Voice</p>
-          <h2>Love as the changing form</h2>
+      <section className="story-instruments" aria-labelledby="instrument-essay-title">
+        <header className="story-instruments__heading">
+          <p className="index-label">Material language / Breath, touch, resonance</p>
+          <h2 id="instrument-essay-title">Made by<br />many hands.</h2>
           <p>
-            Polymorphism borrows a computer science idea: one entity can exist in different forms. On the album, that entity is love. Romantic love, friendship, family and a wider love for people all reveal different versions of the self.
+            The live sound is physical. Air moves through brass. Fingers meet strings. Wood answers touch. Every detail begins with a human gesture.
           </p>
-        </article>
-        <article>
-          <p className="index-label">02 / Live</p>
-          <h2>The ensemble is part of the language</h2>
-          <p>
-            Athi describes trust and chemistry as central to building his band. Live instruments bring intuition and collective energy to music first shaped through writing and arrangement.
-          </p>
-        </article>
-        <article>
-          <p className="index-label">03 / Internet</p>
-          <h2>A name built through connection</h2>
-          <p>
-            Athi uses his real name. The Internet reflects how the work travels and how a community formed around it through learning, sharing and direct exchange.
-          </p>
-        </article>
-      </section>
+        </header>
 
-      <section className="glyph-scene" aria-labelledby="glyph-title">
-        <div className="glyph-scene__image" aria-hidden="true">
-          <pre>{glyphLines}</pre>
-        </div>
-        <div className="glyph-scene__copy">
-          <p className="index-label">Image translated / form 04</p>
-          <h2 id="glyph-title">Analog warmth.<br />Digital structure.</h2>
-          <p>
-            The image remains Athi. Only its surface changes: portrait becomes index, fabric becomes signal, and one identity takes another form.
-          </p>
-        </div>
+        <figure className="instrument-frame instrument-frame--brass">
+          <img src="/assets/story/brass-bell-hq.jpg" alt="Looking into the golden bell of a brass instrument" width="736" height="981" loading="lazy" />
+          <figcaption>Breath / Brass</figcaption>
+        </figure>
+        <figure className="instrument-frame instrument-frame--strings-red">
+          <img src="/assets/story/strings-red-hq.jpg" alt="A musician's hand pressing dark strings beside a red fingerboard" width="735" height="975" loading="lazy" />
+          <figcaption>Touch / Strings</figcaption>
+        </figure>
+        <figure className="instrument-frame instrument-frame--strings-silver">
+          <img src="/assets/story/strings-silver-hq.jpg" alt="A musician's fingers seen along a reflective set of strings" width="736" height="1308" loading="lazy" />
+          <figcaption>Resonance / Strings</figcaption>
+        </figure>
+        <figure className="instrument-frame instrument-frame--oud">
+          <img src="/assets/story/oud.jpg" alt="A musician playing the strings of an oud" width="300" height="451" loading="lazy" />
+          <figcaption>Rhythm / Oud</figcaption>
+        </figure>
       </section>
 
       <section className="story-quote" aria-label="Internet Athi quote">
+        <p className="index-label">On recording and performance</p>
         <blockquote>
-          “I think of singles as short stories, albums as essays. A live show is the audience's interpretation of that essay.”
+          &ldquo;I think of singles as short stories, albums as essays. A live show is the audience&apos;s interpretation of that essay.&rdquo;
         </blockquote>
         <ExternalLink href={pressItems[0].url} showArrow>
           Read the GQ South Africa interview

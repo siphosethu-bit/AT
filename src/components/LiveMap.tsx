@@ -1,5 +1,16 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { LiveEventLocationGroup } from '../lib/liveEvents'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type SVGProps,
+} from 'react'
+import type { LiveEvent } from '../content/types'
+import { downloadLiveEventCalendar } from '../lib/liveEventCalendar'
+import { formatLiveEventDate, formatLiveEventTime, getLiveEventStatus } from '../lib/liveEvents'
 import {
   SA_MAP_HEIGHT,
   SA_MAP_WIDTH,
@@ -7,47 +18,97 @@ import {
   southAfricaPath,
   southAfricaProvinceFeatures,
 } from '../lib/southAfricaMap'
+import type { CityDemandPoint } from '../lib/tourRequest/types'
 import { southAfricaCityLabels } from '../data/southAfricaCityLabels'
-
-export interface LiveMapLocationGroup extends LiveEventLocationGroup {
-  isPast: boolean
-}
+import { ExternalLink } from './ExternalLink'
 
 interface LiveMapProps {
-  locationGroups: LiveMapLocationGroup[]
-  selectedEventId: string | null
-  highlightedEventId: string | null
-  featuredEventId: string | null
-  onSelect: (eventId: string, trigger: HTMLElement) => void
-  onHighlight: (eventId: string | null) => void
+  /** Events for the active filter, already sorted by date — this is also the card's hop order. */
+  events: LiveEvent[]
+  /** Aggregated, non-PII fan demand for cities without a confirmed show yet. */
+  demandPoints?: CityDemandPoint[]
+  /** Opens the city-request panel prefilled with this city when a demand marker is chosen. */
+  onDemandMarkerSelect?: (city: string, trigger: HTMLElement) => void
 }
 
 const tickLongitudes = [16, 20, 24, 28, 32]
 const tickLatitudes = [-22, -26, -30, -34]
 const mapPadding = 44
-const midLatitude = -28
-const midLongitude = 25
 
-/** Cities close enough to a neighbour that the default right-hand label would collide. */
-const markerLabelPlacement: Record<string, 'below'> = {
-  'Cape Town': 'below',
+const CARD_WIDTH = 286
+const CARD_GAP = 22
+const CARD_EDGE_MARGIN = 8
+const CLOSE_TRANSITION_MS = 200
+
+function CloseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true" {...props}>
+      <path d="M2 2l10 10M12 2L2 12" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ChevronIcon({ direction, ...props }: SVGProps<SVGSVGElement> & { direction: 'left' | 'right' }) {
+  const d = direction === 'left' ? 'M10 3L5 8l5 5' : 'M6 3l5 5-5 5'
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true" {...props}>
+      <path d={d} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function CalendarIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true" {...props}>
+      <rect x="2" y="3" width="12" height="11" rx="1" />
+      <path d="M2 7h12M5 1.5v3M11 1.5v3" strokeLinecap="round" />
+    </svg>
+  )
 }
 
 function toPercent(value: number, axisLength: number) {
   return (value / axisLength) * 100
 }
 
-export function LiveMap({
-  locationGroups,
-  selectedEventId,
-  highlightedEventId,
-  featuredEventId,
-  onSelect,
-  onHighlight,
-}: LiveMapProps) {
+interface ProjectedMarker {
+  event: LiveEvent
+  x: number
+  y: number
+}
+
+// Vertical offsets are tried before horizontal ones so that two markers pulled apart by this
+// function land on different label rows instead of different label columns — their labels
+// (which read horizontally, out from the dot) then stack instead of colliding.
+const declutterAngles = [90, 270, 45, 135, 225, 315]
+
+/** Nudges markers that project to (nearly) the same point apart, just enough that every one of
+ * them keeps its own clickable hit area, without moving anything far from its real coordinate. */
+function declutter(markers: ProjectedMarker[]): ProjectedMarker[] {
+  const placed: { x: number; y: number }[] = []
+  return markers.map((marker) => {
+    let { x, y } = marker
+    let attempt = 0
+    while (placed.some((point) => Math.hypot(point.x - x, point.y - y) < 14) && attempt < declutterAngles.length) {
+      const angle = (declutterAngles[attempt] * Math.PI) / 180
+      x = marker.x + Math.cos(angle) * 14
+      y = marker.y + Math.sin(angle) * 14
+      attempt += 1
+    }
+    placed.push({ x, y })
+    return { ...marker, x, y }
+  })
+}
+
+export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: LiveMapProps) {
   const descriptionId = useId()
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const markerRefs = useRef(new Map<string, HTMLButtonElement>())
+  const closeTimeoutRef = useRef<number | undefined>(undefined)
   const [revealed, setRevealed] = useState(false)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [cardVisible, setCardVisible] = useState(false)
+  const [cardStyle, setCardStyle] = useState<{ left: number; top: number; transformOrigin: string } | null>(null)
 
   useEffect(() => {
     const wrapper = wrapperRef.current
@@ -73,14 +134,14 @@ export function LiveMap({
 
   const meridians = useMemo(() => (
     tickLongitudes.map((longitude) => {
-      const point = projectPoint(longitude, midLatitude)
+      const point = projectPoint(longitude, -28)
       return point ? { longitude, x: point[0] } : null
     }).filter((value): value is { longitude: number, x: number } => value !== null)
   ), [])
 
   const parallels = useMemo(() => (
     tickLatitudes.map((latitude) => {
-      const point = projectPoint(midLongitude, latitude)
+      const point = projectPoint(25, latitude)
       return point ? { latitude, y: point[1] } : null
     }).filter((value): value is { latitude: number, y: number } => value !== null)
   ), [])
@@ -92,21 +153,141 @@ export function LiveMap({
     }).filter((value): value is typeof southAfricaCityLabels[number] & { x: number, y: number } => value !== null)
   ), [])
 
-  const markers = useMemo(() => (
-    locationGroups.map((group) => {
-      const point = projectPoint(group.longitude, group.latitude)
-      return point ? { group, x: point[0], y: point[1] } : null
-    }).filter((value): value is { group: LiveMapLocationGroup, x: number, y: number } => value !== null)
-  ), [locationGroups])
+  const markers = useMemo(() => {
+    const projected = events.map((event) => {
+      const point = projectPoint(event.longitude, event.latitude)
+      return point ? { event, x: point[0], y: point[1] } : null
+    }).filter((value): value is ProjectedMarker => value !== null)
 
-  const highlightedGroup = highlightedEventId
-    ? locationGroups.find((group) => group.events.some((event) => event.id === highlightedEventId))
-    : null
-  const highlightedEvent = highlightedGroup
-    ? highlightedGroup.events.find((event) => event.id === highlightedEventId) ?? highlightedGroup.events[0]
-    : null
+    const decluttered = declutter(projected)
 
-  const visualSelectedEventId = selectedEventId ?? featuredEventId
+    // Two events in the same named city (e.g. two Cape Town shows) would otherwise print the
+    // same label twice right next to each other — show the venue on every repeat instead so
+    // each marker still reads as distinct.
+    const seenCityNames = new Set<string>()
+    const withLabelText = decluttered.map((marker) => {
+      const cityKey = marker.event.city.trim().toLowerCase()
+      const labelText = seenCityNames.has(cityKey) ? marker.event.venue : marker.event.city
+      seenCityNames.add(cityKey)
+      return { ...marker, labelText }
+    })
+
+    // A marker's label can also collide with the map's static, event-less city labels (e.g.
+    // Stellenbosch sitting right next to Cape Town), so those count as crowding too.
+    const staticLabelPoints = cityLabels.map((city) => ({ x: city.x, y: city.y }))
+
+    return withLabelText.map((marker) => {
+      const nearRightEdge = marker.x > SA_MAP_WIDTH - mapPadding * 3
+      const crowdedFromTheRight = [
+        ...withLabelText.filter((other) => other.event.id !== marker.event.id),
+        ...staticLabelPoints,
+      ].some((other) => (
+        other.x > marker.x
+        && other.x - marker.x < 140
+        && Math.abs(other.y - marker.y) < 42
+      ))
+      const side: 'left' | 'right' = nearRightEdge || crowdedFromTheRight ? 'left' : 'right'
+      return { ...marker, side }
+    })
+  }, [events, cityLabels])
+
+  const demandMarkers = useMemo(() => (
+    demandPoints.map((demand) => {
+      const point = projectPoint(demand.longitude, demand.latitude)
+      return point ? { demand, x: point[0], y: point[1] } : null
+    }).filter((value): value is { demand: CityDemandPoint, x: number, y: number } => value !== null)
+  ), [demandPoints])
+
+  const openEvent = openId ? events.find((event) => event.id === openId) ?? null : null
+
+  const reposition = useCallback(() => {
+    const wrapper = wrapperRef.current
+    const card = cardRef.current
+    const marker = openId ? markers.find((item) => item.event.id === openId) : undefined
+    if (!wrapper || !card || !marker) return
+
+    const rect = wrapper.getBoundingClientRect()
+    const scaleX = rect.width / SA_MAP_WIDTH
+    const scaleY = rect.height / SA_MAP_HEIGHT
+    const px = marker.x * scaleX
+    const py = marker.y * scaleY
+    const cardWidth = card.offsetWidth || CARD_WIDTH
+    const cardHeight = card.offsetHeight || 200
+
+    let left = px + CARD_GAP
+    let origin = 'left'
+    if (left + cardWidth > rect.width - CARD_EDGE_MARGIN) {
+      left = px - CARD_GAP - cardWidth
+      origin = 'right'
+    }
+    left = Math.max(CARD_EDGE_MARGIN, Math.min(left, rect.width - cardWidth - CARD_EDGE_MARGIN))
+    const top = Math.min(Math.max(py - cardHeight / 2, CARD_EDGE_MARGIN), rect.height - cardHeight - CARD_EDGE_MARGIN)
+
+    setCardStyle({ left, top, transformOrigin: `${origin} ${Math.round(py - top)}px` })
+  }, [openId, markers])
+
+  useLayoutEffect(() => {
+    if (openId === null) return
+    reposition()
+  }, [openId, reposition])
+
+  useEffect(() => {
+    if (openId === null || cardVisible) return
+    const raf = window.requestAnimationFrame(() => setCardVisible(true))
+    return () => window.cancelAnimationFrame(raf)
+  }, [openId, cardVisible])
+
+  useEffect(() => {
+    if (openId === null) return
+    window.addEventListener('resize', reposition)
+    return () => window.removeEventListener('resize', reposition)
+  }, [openId, reposition])
+
+  // Close the card if the currently open event drops out of the active filter.
+  useEffect(() => {
+    if (openId && !events.some((event) => event.id === openId)) {
+      window.clearTimeout(closeTimeoutRef.current)
+      setOpenId(null)
+      setCardVisible(false)
+    }
+  }, [events, openId])
+
+  useEffect(() => () => window.clearTimeout(closeTimeoutRef.current), [])
+
+  const openMarker = useCallback((event: LiveEvent) => {
+    window.clearTimeout(closeTimeoutRef.current)
+    if (openId === null) setCardVisible(false)
+    setOpenId(event.id)
+  }, [openId])
+
+  const closeCard = useCallback(() => {
+    if (openId === null) return
+    const pin = markerRefs.current.get(openId)
+    setCardVisible(false)
+    window.clearTimeout(closeTimeoutRef.current)
+    closeTimeoutRef.current = window.setTimeout(() => setOpenId(null), CLOSE_TRANSITION_MS)
+    window.requestAnimationFrame(() => pin?.focus())
+  }, [openId])
+
+  const hop = useCallback((direction: number) => {
+    setOpenId((current) => {
+      if (current === null || events.length === 0) return current
+      const index = events.findIndex((event) => event.id === current)
+      if (index === -1) return current
+      return events[(index + direction + events.length) % events.length].id
+    })
+  }, [events])
+
+  useEffect(() => {
+    if (openId === null) return
+    const handleKeyDown = (domEvent: KeyboardEvent) => {
+      if (domEvent.key === 'Escape') closeCard()
+      else if (domEvent.key === 'ArrowRight') hop(1)
+      else if (domEvent.key === 'ArrowLeft') hop(-1)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [openId, closeCard, hop])
 
   return (
     <div
@@ -116,6 +297,7 @@ export function LiveMap({
       aria-label="Map of South Africa showing performance locations"
       aria-describedby={descriptionId}
       data-reveal-state={revealed ? 'revealed' : 'pending'}
+      onClick={() => { if (openId !== null) closeCard() }}
     >
       <svg
         className="live-map__frame"
@@ -170,29 +352,6 @@ export function LiveMap({
           ))}
         </g>
 
-        <rect
-          className="live-map__border"
-          x={mapPadding}
-          y={mapPadding}
-          width={SA_MAP_WIDTH - mapPadding * 2}
-          height={SA_MAP_HEIGHT - mapPadding * 2}
-        />
-
-        <g className="live-map__registration-marks">
-          {[
-            [mapPadding, mapPadding],
-            [SA_MAP_WIDTH - mapPadding, mapPadding],
-            [mapPadding, SA_MAP_HEIGHT - mapPadding],
-            [SA_MAP_WIDTH - mapPadding, SA_MAP_HEIGHT - mapPadding],
-          ].map(([x, y]) => (
-            <g key={`${x}-${y}`} transform={`translate(${x}, ${y})`}>
-              <circle r="7" />
-              <line x1="-11" y1="0" x2="11" y2="0" />
-              <line x1="0" y1="-11" x2="0" y2="11" />
-            </g>
-          ))}
-        </g>
-
         <g className="live-map__compass" transform={`translate(${mapPadding + 36}, ${mapPadding + 44})`}>
           <circle r="22" />
           <line x1="0" y1="-22" x2="0" y2="22" />
@@ -213,8 +372,10 @@ export function LiveMap({
       </svg>
 
       <p className="sr-only" id={descriptionId}>
-        Filled markers show verified performance locations; select one, or use the event list, to view details.
-        Cities without a scheduled performance are shown as reference labels only.
+        Filled markers show verified upcoming performances; hollow markers show past ones. Select a marker to open
+        its brief, use the left and right arrow keys or the card&rsquo;s hop buttons to move between shows, and
+        press Escape to close it. Dashed ring markers show cities fans have asked Internet Athi to visit; select
+        one to add your own city request.
       </p>
 
       <div className="live-map__overlay">
@@ -232,54 +393,137 @@ export function LiveMap({
           </span>
         ))}
 
-        {markers.map(({ group, x, y }, index) => {
-          const primaryEvent = group.events[0]
-          const isSelected = group.events.some((event) => event.id === visualSelectedEventId)
-          const isPressed = group.events.some((event) => event.id === selectedEventId)
-          const isHighlighted = group.events.some((event) => event.id === highlightedEventId)
-          const count = group.events.length
-          const label = count > 1
-            ? `View ${count} performances in ${group.city}`
-            : `View ${primaryEvent.title} at ${primaryEvent.venue}`
-          const labelPlacement = markerLabelPlacement[group.city]
+        {markers.map(({ event, x, y, side, labelText }, index) => {
+          const isPast = getLiveEventStatus(event) === 'past'
+          const isOpen = event.id === openId
 
           return (
             <button
-              key={group.key}
+              key={event.id}
+              ref={(element) => {
+                if (element) markerRefs.current.set(event.id, element)
+                else markerRefs.current.delete(event.id)
+              }}
               type="button"
               className={[
                 'live-map__marker',
-                group.isPast ? 'is-past' : 'is-upcoming',
-                isSelected ? 'is-selected' : '',
-                isHighlighted ? 'is-highlighted' : '',
-                labelPlacement ? `live-map__marker--label-${labelPlacement}` : '',
+                isPast ? 'is-past' : 'is-upcoming',
+                isOpen ? 'is-open' : '',
+                side === 'left' ? 'live-map__marker--label-left' : '',
               ].filter(Boolean).join(' ')}
               style={{
                 left: `${toPercent(x, SA_MAP_WIDTH)}%`,
                 top: `${toPercent(y, SA_MAP_HEIGHT)}%`,
                 animationDelay: `${index * 60}ms`,
               }}
-              aria-label={label}
-              aria-pressed={isPressed}
-              onClick={(event) => onSelect(primaryEvent.id, event.currentTarget)}
-              onFocus={() => onHighlight(primaryEvent.id)}
-              onBlur={() => onHighlight(null)}
-              onMouseEnter={() => onHighlight(primaryEvent.id)}
-              onMouseLeave={() => onHighlight(null)}
+              aria-label={`${event.city}, ${event.title}, ${formatLiveEventDate(event)}`}
+              aria-pressed={isOpen}
+              onClick={(domEvent) => {
+                domEvent.stopPropagation()
+                openMarker(event)
+              }}
             >
               <span className="live-map__marker-ring" aria-hidden="true" />
               <span className="live-map__marker-dot" aria-hidden="true" />
-              <span className="live-map__marker-label" aria-hidden="true">{group.city}</span>
-              {count > 1 ? <span className="live-map__marker-count" aria-hidden="true">{count}</span> : null}
+              <span className="live-map__marker-label" aria-hidden="true">{labelText}</span>
             </button>
           )
         })}
+
+        {demandMarkers.map(({ demand, x, y }, index) => (
+          <button
+            key={demand.city}
+            type="button"
+            className="live-map__marker is-demand"
+            style={{
+              left: `${toPercent(x, SA_MAP_WIDTH)}%`,
+              top: `${toPercent(y, SA_MAP_HEIGHT)}%`,
+              animationDelay: `${(markers.length + index) * 60}ms`,
+            }}
+            aria-label={`${demand.requesterCount} ${demand.requesterCount === 1 ? 'fan has' : 'fans have'} asked for a show in ${demand.city}. Add your city request.`}
+            onClick={(domEvent) => {
+              domEvent.stopPropagation()
+              onDemandMarkerSelect?.(demand.city, domEvent.currentTarget)
+            }}
+          >
+            <span className="live-map__marker-ring" aria-hidden="true" />
+            <span className="live-map__marker-label" aria-hidden="true">{demand.city}</span>
+            <span className="live-map__marker-count" aria-hidden="true">{demand.requesterCount}</span>
+          </button>
+        ))}
       </div>
 
-      {highlightedEvent ? (
-        <div className="live-map__tooltip" role="status">
-          <strong>{highlightedEvent.title}</strong>
-          <span>{highlightedEvent.venue}, {highlightedEvent.city}</span>
+      {openEvent ? (
+        <div className={`live-map__scrim${cardVisible ? ' is-visible' : ''}`} aria-hidden="true" />
+      ) : null}
+
+      {openEvent ? (
+        <div
+          ref={cardRef}
+          className={`live-map__card${cardVisible ? ' is-visible' : ''}`}
+          style={{
+            left: cardStyle?.left ?? 0,
+            top: cardStyle?.top ?? 0,
+            transformOrigin: cardStyle?.transformOrigin ?? 'center',
+            visibility: cardStyle ? 'visible' : 'hidden',
+          }}
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby={`live-map-card-title-${openEvent.id}`}
+          onClick={(domEvent) => domEvent.stopPropagation()}
+        >
+          <span className="live-map__card-corner live-map__card-corner--tl" aria-hidden="true" />
+          <span className="live-map__card-corner live-map__card-corner--br" aria-hidden="true" />
+          <button type="button" className="live-map__card-close" onClick={closeCard} aria-label="Close">
+            <CloseIcon />
+          </button>
+
+          {(() => {
+            const isPast = getLiveEventStatus(openEvent) === 'past'
+            return (
+              <>
+                <p className={`live-map__card-when${isPast ? ' live-map__card-when--past' : ''}`}>
+                  {formatLiveEventDate(openEvent)} / {formatLiveEventTime(openEvent)}
+                  {isPast ? <span className="live-map__card-when-past"> / PAST</span> : null}
+                </p>
+                <h2 id={`live-map-card-title-${openEvent.id}`} className="live-map__card-title">
+                  {openEvent.title}
+                </h2>
+                <p className="live-map__card-venue">{openEvent.venue}</p>
+                <p className="live-map__card-city">{openEvent.city}</p>
+                <p className="live-map__card-tickets">
+                  {isPast ? (
+                    'This one has passed.'
+                  ) : openEvent.ticketUrl ? (
+                    <ExternalLink href={openEvent.ticketUrl}>Get tickets</ExternalLink>
+                  ) : openEvent.rsvpUrl ? (
+                    <ExternalLink href={openEvent.rsvpUrl}>RSVP</ExternalLink>
+                  ) : (
+                    'Booking details to follow.'
+                  )}
+                </p>
+              </>
+            )
+          })()}
+
+          <div className="live-map__card-row">
+            <button
+              type="button"
+              className="live-map__card-cal"
+              onClick={() => downloadLiveEventCalendar(openEvent)}
+            >
+              <CalendarIcon />
+              Add to calendar
+            </button>
+            <div className="live-map__card-hop">
+              <button type="button" onClick={() => hop(-1)} disabled={events.length < 2} aria-label="Previous show">
+                <ChevronIcon direction="left" />
+              </button>
+              <button type="button" onClick={() => hop(1)} disabled={events.length < 2} aria-label="Next show">
+                <ChevronIcon direction="right" />
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

@@ -1,3 +1,4 @@
+import { CommunityCTA } from '../components/community/CommunityCTA'
 import { ExternalLink } from '../components/ExternalLink'
 import { Seo } from '../components/Seo'
 import { artist, liveEvents, polymorphism } from '../content/artist'
@@ -108,6 +109,8 @@ export function HomePage() {
             <Link className="text-link" to="/book">Request a show →</Link>
           </article>
         )}
+
+        <CommunityCTA variant="inline" signupContext="home-afterword-cta" />
       </section>
     </>
   )

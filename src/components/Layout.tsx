@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type PropsWithChildren } from 'react'
 import { useReducedMotion } from 'framer-motion'
 import { artist, socialProfiles } from '../content/artist'
+import { CommunityCTA } from './community/CommunityCTA'
+import { CommunityPanel } from './community/CommunityPanel'
 import { Link, NavLink, useRouter } from '../lib/router'
 import { ArrowIcon, HomeIcon } from './MenuIcons'
 import { ExternalLink } from './ExternalLink'
@@ -169,6 +171,8 @@ export function Layout({ children }: PropsWithChildren) {
         {children}
       </main>
 
+      {isHome ? null : <CommunityCTA />}
+
       <footer className="site-footer" aria-hidden={menuVisible || undefined}>
         <div>
           <p className="site-footer__name">Internet Athi</p>
@@ -189,6 +193,8 @@ export function Layout({ children }: PropsWithChildren) {
           © {new Date().getFullYear()} Internet Athi
         </p>
       </footer>
+
+      <CommunityPanel />
     </div>
   )
 }

@@ -1,5 +1,7 @@
 import { Layout } from './components/Layout'
 import { SchemaMarkup } from './components/SchemaMarkup'
+import { CommunityProvider } from './context/CommunityContext'
+import { TourRequestProvider } from './context/TourRequestContext'
 import { useRouter } from './lib/router'
 import { BookPage } from './pages/BookPage'
 import { HomePage } from './pages/HomePage'
@@ -18,9 +20,11 @@ export default function App() {
   }[pathname] ?? <HomePage />
 
   return (
-    <>
-      <SchemaMarkup />
-      <Layout>{page}</Layout>
-    </>
+    <CommunityProvider>
+      <TourRequestProvider>
+        <SchemaMarkup />
+        <Layout>{page}</Layout>
+      </TourRequestProvider>
+    </CommunityProvider>
   )
 }
