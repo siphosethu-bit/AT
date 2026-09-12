@@ -100,12 +100,10 @@ export function Layout({ children }: PropsWithChildren) {
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <header className={isHome ? 'site-header site-header--home' : 'site-header'}>
-        {isHome ? (
+      <header className="site-header paper-header">
           <Link className="site-wordmark" to="/" tabIndex={menuOpen ? -1 : undefined}>
             Internet Athi
           </Link>
-        ) : null}
         <nav className="desktop-nav" aria-label="Primary navigation">
           {navigation.map((item) => (
             <NavLink
@@ -192,6 +190,7 @@ export function Layout({ children }: PropsWithChildren) {
         <p className="site-footer__copyright">
           © {new Date().getFullYear()} Internet Athi
         </p>
+        <Link className="site-footer__artist" to="/admin">Artist sign in ↗</Link>
       </footer>
 
       <CommunityPanel />

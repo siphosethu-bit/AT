@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Layout } from './components/Layout'
 import { SchemaMarkup } from './components/SchemaMarkup'
 import { CommunityProvider } from './context/CommunityContext'
@@ -9,8 +10,13 @@ import { ListenPage } from './pages/ListenPage'
 import { LivePage } from './pages/LivePage'
 import { StoryPage } from './pages/StoryPage'
 
+const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })))
+
 export default function App() {
   const { pathname } = useRouter()
+  if (pathname === '/admin' || pathname === '/admin/preview') {
+    return <Suspense fallback={<p className="artist-loading" role="status">Opening the artist desk…</p>}><AdminPage key={pathname} /></Suspense>
+  }
   const page = {
     '/': <HomePage />,
     '/listen': <ListenPage />,

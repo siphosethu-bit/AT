@@ -1,0 +1,46 @@
+/* The supplied artwork stays intact; navigation, identity and actions are real HTML. */
+.signature-stage {
+  position: relative; isolation: isolate; min-height: 620px;
+  height: max(100svh, 56.28vw); max-height: 1200px;
+  overflow: hidden; background: #f5f2eb; color: var(--ink);
+}
+.signature-art { position: absolute; inset: 0; z-index: -1; }
+.signature-art > img { width: 100%; height: 100%; object-fit: fill; }
+.signature-art__portrait, .signature-art__brush, .signature-art__thread { display: none; }
+.signature-stage__tagline { position: absolute; top: 41%; left: 9.65%; font-size: clamp(.85rem, 1.13vw, 1.25rem); letter-spacing: .015em; }
+.signature-name { position: absolute; top: 58.3%; left: 5.5%; font-weight: 400; line-height: 1; }
+.signature-name__prefix { font-family: var(--sans); font-size: clamp(1.15rem, 2.15vw, 2.5rem); letter-spacing: .25em; }
+.signature-stage__location { position: absolute; left: 3.4%; bottom: 5.6%; font-size: clamp(.8rem, 1.04vw, 1.15rem); letter-spacing: .06em; }
+.signature-actions { position: absolute; top: 79%; right: 3.4%; width: 16.7%; min-width: 220px; }
+.signature-actions__eyebrow { display: flex; align-items: center; gap: .5rem; font-size: .7rem; letter-spacing: .19em; text-transform: uppercase; }
+.signature-actions__eyebrow span { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.signature-actions a { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-height: 48px; transition: color 180ms ease; }
+.signature-actions a:hover { color: var(--accent); }
+.signature-actions__primary { font-size: clamp(1rem, 1.45vw, 1.65rem); border-bottom: 1px solid #77716a; padding: .4rem 0 1rem; margin: .25rem 0 .5rem; }
+.signature-actions__secondary { font-size: clamp(.9rem, 1.07vw, 1.2rem); justify-content: flex-start !important; }
+.signature-arrow { width: .85em; height: .85em; flex-shrink: 0; }
+.home-afterword { background: var(--paper); border-top: 1px solid var(--line); }
+
+/* Recompose the portrait and actual brush lettering for the supplied mobile direction. */
+@media (max-width: 760px) {
+  .signature-stage { min-height: 0; height: auto; max-height: none; padding: 0 7.5%; display: flex; flex-direction: column; }
+  .signature-art { position: relative; inset: auto; z-index: -1; margin: 38.5vw -8.82% 0; height: auto; aspect-ratio: 1 / 1.18; }
+  .signature-art > img { display: none; }
+  .signature-art__portrait { display: block; position: absolute; z-index: 1; top: 0; left: 24%; width: 68.5%; aspect-ratio: 1; background: url('/assets/athi-paper-landing.png') 64% 29.6% / 360.3% 202.8%; }
+  .signature-art__brush { display: block; position: absolute; z-index: 2; left: 4%; top: 69%; width: 89%; aspect-ratio: 981 / 330; background: url('/assets/athi-paper-landing.png') 13.9% 66.77% / 170.44% 285.15%; mix-blend-mode: multiply; }
+  .signature-art__thread { display: block; position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: var(--accent); }
+  .signature-art__thread path { fill: none; stroke: var(--accent); stroke-width: 1.2; }
+  .signature-stage__tagline { top: 27.5vw; left: 7.5%; font-size: clamp(.85rem, 3.1vw, 1.35rem); }
+  .signature-name { top: 113.5vw; left: 7.5%; }
+  .signature-name__prefix { font-size: clamp(1.05rem, 4.1vw, 1.8rem); letter-spacing: .26em; }
+  .signature-actions { position: relative; inset: auto; width: 100%; min-width: 0; margin: 0 0 9vw; }
+  .signature-actions__eyebrow { font-size: clamp(.65rem, 2.5vw, .9rem); }
+  .signature-actions__primary { font-size: clamp(1.2rem, 4.6vw, 1.8rem); padding-bottom: 3vw; margin: 1vw 0 2vw; }
+  .signature-actions__secondary { font-size: clamp(1.05rem, 4vw, 1.5rem); }
+  .signature-stage__location { position: relative; inset: auto; font-size: clamp(.72rem, 2.8vw, 1.05rem); padding-bottom: 8vw; }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .signature-actions { right: 4%; top: 79%; width: 23%; min-width: 0; }
+  .signature-actions__eyebrow { font-size: .59rem; }
+  .signature-stage { height: max(680px, 56.28vw); }
+}

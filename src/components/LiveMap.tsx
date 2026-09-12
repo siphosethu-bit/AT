@@ -31,8 +31,6 @@ interface LiveMapProps {
   onDemandMarkerSelect?: (city: string, trigger: HTMLElement) => void
 }
 
-const tickLongitudes = [16, 20, 24, 28, 32]
-const tickLatitudes = [-22, -26, -30, -34]
 const mapPadding = 44
 
 const CARD_WIDTH = 286
@@ -76,6 +74,10 @@ interface ProjectedMarker {
   y: number
 }
 
+type OpenTarget =
+  | { type: 'event'; id: string }
+  | { type: 'province'; name: string }
+
 // Vertical offsets are tried before horizontal ones so that two markers pulled apart by this
 // function land on different label rows instead of different label columns — their labels
 // (which read horizontally, out from the dot) then stack instead of colliding.
@@ -104,9 +106,10 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
   const wrapperRef = useRef<HTMLDivElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   const markerRefs = useRef(new Map<string, HTMLButtonElement>())
+  const provinceRefs = useRef(new Map<string, SVGPathElement>())
   const closeTimeoutRef = useRef<number | undefined>(undefined)
   const [revealed, setRevealed] = useState(false)
-  const [openId, setOpenId] = useState<string | null>(null)
+  const [openTarget, setOpenTarget] = useState<OpenTarget | null>(null)
   const [cardVisible, setCardVisible] = useState(false)
   const [cardStyle, setCardStyle] = useState<{ left: number; top: number; transformOrigin: string } | null>(null)
 
@@ -126,25 +129,29 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
   }, [])
 
   const provincePaths = useMemo(() => (
-    southAfricaProvinceFeatures.map((feature) => ({
-      name: feature.properties.name,
-      d: southAfricaPath(feature) ?? '',
-    }))
+    southAfricaProvinceFeatures.map((feature) => {
+      const [x, y] = southAfricaPath.centroid(feature)
+      return {
+        name: feature.properties.name,
+        d: southAfricaPath(feature) ?? '',
+        x,
+        y,
+      }
+    })
   ), [])
 
-  const meridians = useMemo(() => (
-    tickLongitudes.map((longitude) => {
-      const point = projectPoint(longitude, -28)
-      return point ? { longitude, x: point[0] } : null
-    }).filter((value): value is { longitude: number, x: number } => value !== null)
-  ), [])
-
-  const parallels = useMemo(() => (
-    tickLatitudes.map((latitude) => {
-      const point = projectPoint(25, latitude)
-      return point ? { latitude, y: point[1] } : null
-    }).filter((value): value is { latitude: number, y: number } => value !== null)
-  ), [])
+  // Shows currently in view (respecting the Upcoming/Past/All filter), grouped by province, so a
+  // province click can list everything happening there without needing each pin found and tapped.
+  const provinceEvents = useMemo(() => {
+    const map = new Map<string, LiveEvent[]>()
+    for (const event of events) {
+      if (!event.region) continue
+      const list = map.get(event.region)
+      if (list) list.push(event)
+      else map.set(event.region, [event])
+    }
+    return map
+  }, [events])
 
   const cityLabels = useMemo(() => (
     southAfricaCityLabels.map((city) => {
@@ -198,19 +205,30 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
     }).filter((value): value is { demand: CityDemandPoint, x: number, y: number } => value !== null)
   ), [demandPoints])
 
-  const openEvent = openId ? events.find((event) => event.id === openId) ?? null : null
+  const openEvent = openTarget?.type === 'event' ? events.find((event) => event.id === openTarget.id) ?? null : null
+  const openProvinceName = openTarget?.type === 'province' ? openTarget.name : null
+  const openProvinceEvents = openProvinceName ? provinceEvents.get(openProvinceName) ?? [] : []
+  const cardHeadingId = openTarget
+    ? openTarget.type === 'event'
+      ? `live-map-card-title-${openTarget.id}`
+      : `live-map-card-province-${openTarget.name.replace(/\s+/g, '-').toLowerCase()}`
+    : undefined
 
   const reposition = useCallback(() => {
     const wrapper = wrapperRef.current
     const card = cardRef.current
-    const marker = openId ? markers.find((item) => item.event.id === openId) : undefined
-    if (!wrapper || !card || !marker) return
+    if (!wrapper || !card || !openTarget) return
+
+    const anchor = openTarget.type === 'event'
+      ? markers.find((item) => item.event.id === openTarget.id)
+      : provincePaths.find((item) => item.name === openTarget.name)
+    if (!anchor) return
 
     const rect = wrapper.getBoundingClientRect()
     const scaleX = rect.width / SA_MAP_WIDTH
     const scaleY = rect.height / SA_MAP_HEIGHT
-    const px = marker.x * scaleX
-    const py = marker.y * scaleY
+    const px = anchor.x * scaleX
+    const py = anchor.y * scaleY
     const cardWidth = card.offsetWidth || CARD_WIDTH
     const cardHeight = card.offsetHeight || 200
 
@@ -224,62 +242,72 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
     const top = Math.min(Math.max(py - cardHeight / 2, CARD_EDGE_MARGIN), rect.height - cardHeight - CARD_EDGE_MARGIN)
 
     setCardStyle({ left, top, transformOrigin: `${origin} ${Math.round(py - top)}px` })
-  }, [openId, markers])
+  }, [openTarget, markers, provincePaths])
 
   useLayoutEffect(() => {
-    if (openId === null) return
+    if (openTarget === null) return
     reposition()
-  }, [openId, reposition])
+  }, [openTarget, reposition])
 
   useEffect(() => {
-    if (openId === null || cardVisible) return
+    if (openTarget === null || cardVisible) return
     const raf = window.requestAnimationFrame(() => setCardVisible(true))
     return () => window.cancelAnimationFrame(raf)
-  }, [openId, cardVisible])
+  }, [openTarget, cardVisible])
 
   useEffect(() => {
-    if (openId === null) return
+    if (openTarget === null) return
     window.addEventListener('resize', reposition)
     return () => window.removeEventListener('resize', reposition)
-  }, [openId, reposition])
+  }, [openTarget, reposition])
 
-  // Close the card if the currently open event drops out of the active filter.
+  // Close the card if the currently open event drops out of the active filter. A province stays
+  // open across filter changes instead — its list just reflects however many shows remain (or an
+  // empty state), since the province itself never leaves the map.
   useEffect(() => {
-    if (openId && !events.some((event) => event.id === openId)) {
+    if (openTarget?.type === 'event' && !events.some((event) => event.id === openTarget.id)) {
       window.clearTimeout(closeTimeoutRef.current)
-      setOpenId(null)
+      setOpenTarget(null)
       setCardVisible(false)
     }
-  }, [events, openId])
+  }, [events, openTarget])
 
   useEffect(() => () => window.clearTimeout(closeTimeoutRef.current), [])
 
-  const openMarker = useCallback((event: LiveEvent) => {
+  const openEventCard = useCallback((event: LiveEvent) => {
     window.clearTimeout(closeTimeoutRef.current)
-    if (openId === null) setCardVisible(false)
-    setOpenId(event.id)
-  }, [openId])
+    if (openTarget === null) setCardVisible(false)
+    setOpenTarget({ type: 'event', id: event.id })
+  }, [openTarget])
+
+  const openProvinceCard = useCallback((name: string) => {
+    window.clearTimeout(closeTimeoutRef.current)
+    if (openTarget === null) setCardVisible(false)
+    setOpenTarget({ type: 'province', name })
+  }, [openTarget])
 
   const closeCard = useCallback(() => {
-    if (openId === null) return
-    const pin = markerRefs.current.get(openId)
+    if (openTarget === null) return
+    const trigger = openTarget.type === 'event'
+      ? markerRefs.current.get(openTarget.id)
+      : provinceRefs.current.get(openTarget.name)
     setCardVisible(false)
     window.clearTimeout(closeTimeoutRef.current)
-    closeTimeoutRef.current = window.setTimeout(() => setOpenId(null), CLOSE_TRANSITION_MS)
-    window.requestAnimationFrame(() => pin?.focus())
-  }, [openId])
+    closeTimeoutRef.current = window.setTimeout(() => setOpenTarget(null), CLOSE_TRANSITION_MS)
+    window.requestAnimationFrame(() => trigger?.focus())
+  }, [openTarget])
 
   const hop = useCallback((direction: number) => {
-    setOpenId((current) => {
-      if (current === null || events.length === 0) return current
-      const index = events.findIndex((event) => event.id === current)
+    setOpenTarget((current) => {
+      if (current === null || current.type !== 'event' || events.length === 0) return current
+      const index = events.findIndex((event) => event.id === current.id)
       if (index === -1) return current
-      return events[(index + direction + events.length) % events.length].id
+      return { type: 'event', id: events[(index + direction + events.length) % events.length].id }
     })
   }, [events])
 
   useEffect(() => {
-    if (openId === null) return
+    if (openTarget === null) return
     const handleKeyDown = (domEvent: KeyboardEvent) => {
       if (domEvent.key === 'Escape') closeCard()
       else if (domEvent.key === 'ArrowRight') hop(1)
@@ -287,7 +315,7 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [openId, closeCard, hop])
+  }, [openTarget, closeCard, hop])
 
   return (
     <div
@@ -297,13 +325,12 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
       aria-label="Map of South Africa showing performance locations"
       aria-describedby={descriptionId}
       data-reveal-state={revealed ? 'revealed' : 'pending'}
-      onClick={() => { if (openId !== null) closeCard() }}
+      onClick={() => { if (openTarget !== null) closeCard() }}
     >
       <svg
         className="live-map__frame"
         viewBox={`0 0 ${SA_MAP_WIDTH} ${SA_MAP_HEIGHT}`}
         preserveAspectRatio="xMidYMid meet"
-        aria-hidden="true"
       >
         <defs>
           <pattern id="live-map-stipple" patternUnits="userSpaceOnUse" width="7" height="7">
@@ -317,65 +344,72 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
           <filter id="live-map-grain">
             <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch" />
           </filter>
+          <clipPath id="live-map-landmass">
+            {provincePaths.map((province) => (
+              <path key={province.name} d={province.d} />
+            ))}
+          </clipPath>
         </defs>
 
         <g className="live-map__provinces">
-          {provincePaths.map((province) => (
-            <path key={province.name} className="live-map__province" d={province.d} />
-          ))}
+          {provincePaths.map((province) => {
+            const eventsHere = provinceEvents.get(province.name) ?? []
+            const isSelected = openTarget?.type === 'province' && openTarget.name === province.name
+            const isDimmed = openTarget?.type === 'province' && openTarget.name !== province.name
+            const label = eventsHere.length === 0
+              ? `${province.name}, no confirmed shows in view`
+              : `${province.name}, ${eventsHere.length} ${eventsHere.length === 1 ? 'show' : 'shows'} in view`
+
+            return (
+              <path
+                key={province.name}
+                ref={(element) => {
+                  if (element) provinceRefs.current.set(province.name, element)
+                  else provinceRefs.current.delete(province.name)
+                }}
+                className={[
+                  'live-map__province',
+                  eventsHere.length > 0 ? 'has-events' : '',
+                  isSelected ? 'is-selected' : '',
+                  isDimmed ? 'is-dimmed' : '',
+                ].filter(Boolean).join(' ')}
+                d={province.d}
+                role="button"
+                tabIndex={0}
+                aria-label={label}
+                aria-pressed={isSelected}
+                onClick={(domEvent) => {
+                  domEvent.stopPropagation()
+                  openProvinceCard(province.name)
+                }}
+                onKeyDown={(domEvent) => {
+                  if (domEvent.key !== 'Enter' && domEvent.key !== ' ') return
+                  domEvent.preventDefault()
+                  domEvent.stopPropagation()
+                  openProvinceCard(province.name)
+                }}
+              />
+            )
+          })}
         </g>
 
         <rect
           className="live-map__grain"
+          aria-hidden="true"
           x={mapPadding}
           y={mapPadding}
           width={SA_MAP_WIDTH - mapPadding * 2}
           height={SA_MAP_HEIGHT - mapPadding * 2}
           filter="url(#live-map-grain)"
+          clipPath="url(#live-map-landmass)"
         />
-
-        <g className="live-map__graticule">
-          {meridians.map(({ longitude, x }) => (
-            <line key={longitude} x1={x} y1={mapPadding} x2={x} y2={SA_MAP_HEIGHT - mapPadding} />
-          ))}
-          {parallels.map(({ latitude, y }) => (
-            <line key={latitude} x1={mapPadding} y1={y} x2={SA_MAP_WIDTH - mapPadding} y2={y} />
-          ))}
-        </g>
-
-        <g className="live-map__ticks">
-          {meridians.map(({ longitude, x }) => (
-            <text key={longitude} x={x} y={mapPadding - 12} textAnchor="middle">{Math.abs(longitude)}°E</text>
-          ))}
-          {parallels.map(({ latitude, y }) => (
-            <text key={latitude} x={mapPadding - 12} y={y + 4} textAnchor="end">{Math.abs(latitude)}°S</text>
-          ))}
-        </g>
-
-        <g className="live-map__compass" transform={`translate(${mapPadding + 36}, ${mapPadding + 44})`}>
-          <circle r="22" />
-          <line x1="0" y1="-22" x2="0" y2="22" />
-          <line x1="-22" y1="0" x2="22" y2="0" />
-          <path d="M 0 -16 L 5 0 L 0 16 L -5 0 Z" />
-          <text y="-30" textAnchor="middle">N</text>
-        </g>
-
-        <text
-          className="live-map__scale"
-          x={SA_MAP_WIDTH - mapPadding + 16}
-          y={SA_MAP_HEIGHT / 2}
-          textAnchor="middle"
-          transform={`rotate(90, ${SA_MAP_WIDTH - mapPadding + 16}, ${SA_MAP_HEIGHT / 2})`}
-        >
-          Scale 1:4 500 000
-        </text>
       </svg>
 
       <p className="sr-only" id={descriptionId}>
         Filled markers show verified upcoming performances; hollow markers show past ones. Select a marker to open
         its brief, use the left and right arrow keys or the card&rsquo;s hop buttons to move between shows, and
-        press Escape to close it. Dashed ring markers show cities fans have asked Internet Athi to visit; select
-        one to add your own city request.
+        press Escape to close it. Select a province outline to see every show scheduled there. Dashed ring markers
+        show cities fans have asked Internet Athi to visit; select one to add your own city request.
       </p>
 
       <div className="live-map__overlay">
@@ -395,7 +429,8 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
 
         {markers.map(({ event, x, y, side, labelText }, index) => {
           const isPast = getLiveEventStatus(event) === 'past'
-          const isOpen = event.id === openId
+          const isOpen = openTarget?.type === 'event' && event.id === openTarget.id
+          const isDimmedByProvince = openTarget?.type === 'province' && event.region !== openTarget.name
 
           return (
             <button
@@ -409,6 +444,7 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
                 'live-map__marker',
                 isPast ? 'is-past' : 'is-upcoming',
                 isOpen ? 'is-open' : '',
+                isDimmedByProvince ? 'is-dimmed' : '',
                 side === 'left' ? 'live-map__marker--label-left' : '',
               ].filter(Boolean).join(' ')}
               style={{
@@ -420,7 +456,7 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
               aria-pressed={isOpen}
               onClick={(domEvent) => {
                 domEvent.stopPropagation()
-                openMarker(event)
+                openEventCard(event)
               }}
             >
               <span className="live-map__marker-ring" aria-hidden="true" />
@@ -453,11 +489,11 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
         ))}
       </div>
 
-      {openEvent ? (
+      {openTarget ? (
         <div className={`live-map__scrim${cardVisible ? ' is-visible' : ''}`} aria-hidden="true" />
       ) : null}
 
-      {openEvent ? (
+      {openTarget ? (
         <div
           ref={cardRef}
           className={`live-map__card${cardVisible ? ' is-visible' : ''}`}
@@ -469,7 +505,7 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
           }}
           role="dialog"
           aria-modal="false"
-          aria-labelledby={`live-map-card-title-${openEvent.id}`}
+          aria-labelledby={cardHeadingId}
           onClick={(domEvent) => domEvent.stopPropagation()}
         >
           <span className="live-map__card-corner live-map__card-corner--tl" aria-hidden="true" />
@@ -478,52 +514,92 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
             <CloseIcon />
           </button>
 
-          {(() => {
-            const isPast = getLiveEventStatus(openEvent) === 'past'
-            return (
-              <>
-                <p className={`live-map__card-when${isPast ? ' live-map__card-when--past' : ''}`}>
-                  {formatLiveEventDate(openEvent)} / {formatLiveEventTime(openEvent)}
-                  {isPast ? <span className="live-map__card-when-past"> / PAST</span> : null}
+          {openTarget.type === 'event' && openEvent ? (
+            (() => {
+              const isPast = getLiveEventStatus(openEvent) === 'past'
+              return (
+                <>
+                  <p className={`live-map__card-when${isPast ? ' live-map__card-when--past' : ''}`}>
+                    {formatLiveEventDate(openEvent)} / {formatLiveEventTime(openEvent)}
+                    {isPast ? <span className="live-map__card-when-past"> / PAST</span> : null}
+                  </p>
+                  <h2 id={cardHeadingId} className="live-map__card-title">
+                    {openEvent.title}
+                  </h2>
+                  <p className="live-map__card-venue">{openEvent.venue}</p>
+                  <p className="live-map__card-city">{openEvent.city}</p>
+                  <p className="live-map__card-tickets">
+                    {isPast ? (
+                      'This one has passed.'
+                    ) : openEvent.ticketUrl ? (
+                      <ExternalLink href={openEvent.ticketUrl}>Get tickets</ExternalLink>
+                    ) : openEvent.rsvpUrl ? (
+                      <ExternalLink href={openEvent.rsvpUrl}>RSVP</ExternalLink>
+                    ) : (
+                      'Booking details to follow.'
+                    )}
+                  </p>
+                </>
+              )
+            })()
+          ) : (
+            <>
+              <p className="live-map__card-when">Province</p>
+              <h2 id={cardHeadingId} className="live-map__card-title">{openProvinceName}</h2>
+              <p className="live-map__card-province-count">
+                {openProvinceEvents.length === 0
+                  ? 'No shows in the current view.'
+                  : `${openProvinceEvents.length} ${openProvinceEvents.length === 1 ? 'show' : 'shows'} in view`}
+              </p>
+              {openProvinceEvents.length > 0 ? (
+                <ul className="live-map__card-province-list">
+                  {openProvinceEvents.map((event) => {
+                    const isPast = getLiveEventStatus(event) === 'past'
+                    return (
+                      <li key={event.id}>
+                        <button
+                          type="button"
+                          className="live-map__card-province-item"
+                          onClick={() => openEventCard(event)}
+                        >
+                          <span className={`live-map__card-province-item-when${isPast ? ' is-past' : ''}`}>
+                            {formatLiveEventDate(event)}
+                          </span>
+                          <span className="live-map__card-province-item-title">{event.title}</span>
+                          <span className="live-map__card-province-item-venue">{event.venue} · {event.city}</span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : (
+                <p className="live-map__card-province-empty">
+                  No confirmed Internet Athi shows here yet — check back soon.
                 </p>
-                <h2 id={`live-map-card-title-${openEvent.id}`} className="live-map__card-title">
-                  {openEvent.title}
-                </h2>
-                <p className="live-map__card-venue">{openEvent.venue}</p>
-                <p className="live-map__card-city">{openEvent.city}</p>
-                <p className="live-map__card-tickets">
-                  {isPast ? (
-                    'This one has passed.'
-                  ) : openEvent.ticketUrl ? (
-                    <ExternalLink href={openEvent.ticketUrl}>Get tickets</ExternalLink>
-                  ) : openEvent.rsvpUrl ? (
-                    <ExternalLink href={openEvent.rsvpUrl}>RSVP</ExternalLink>
-                  ) : (
-                    'Booking details to follow.'
-                  )}
-                </p>
-              </>
-            )
-          })()}
+              )}
+            </>
+          )}
 
-          <div className="live-map__card-row">
-            <button
-              type="button"
-              className="live-map__card-cal"
-              onClick={() => downloadLiveEventCalendar(openEvent)}
-            >
-              <CalendarIcon />
-              Add to calendar
-            </button>
-            <div className="live-map__card-hop">
-              <button type="button" onClick={() => hop(-1)} disabled={events.length < 2} aria-label="Previous show">
-                <ChevronIcon direction="left" />
+          {openTarget.type === 'event' && openEvent ? (
+            <div className="live-map__card-row">
+              <button
+                type="button"
+                className="live-map__card-cal"
+                onClick={() => downloadLiveEventCalendar(openEvent)}
+              >
+                <CalendarIcon />
+                Add to calendar
               </button>
-              <button type="button" onClick={() => hop(1)} disabled={events.length < 2} aria-label="Next show">
-                <ChevronIcon direction="right" />
-              </button>
+              <div className="live-map__card-hop">
+                <button type="button" onClick={() => hop(-1)} disabled={events.length < 2} aria-label="Previous show">
+                  <ChevronIcon direction="left" />
+                </button>
+                <button type="button" onClick={() => hop(1)} disabled={events.length < 2} aria-label="Next show">
+                  <ChevronIcon direction="right" />
+                </button>
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       ) : null}
     </div>

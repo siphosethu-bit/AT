@@ -22,10 +22,8 @@ const viewports = [
   { width: 1920, height: 1080 },
 ]
 
-const expectsMobileArtwork = ({ width, height }) => width <= 1023 && height > width
 const expectsMenu = ({ width, height }) => (
-  width <= 767 ||
-  (width <= 1023 && height > width) ||
+  width <= 780 ||
   (width <= 900 && height <= 500 && width > height)
 )
 
@@ -40,7 +38,6 @@ const report = {
   viewports: [],
   reducedMotion: [],
   interactions: {},
-  returnVisit: {},
   textEnlargement: {},
   failures: [],
 }
@@ -49,19 +46,13 @@ for (const viewport of viewports) {
   const context = await browser.newContext({ viewport, hasTouch: expectsMenu(viewport) })
   const page = await context.newPage()
   const errors = []
-  const artworkRequests = []
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(`console: ${message.text()}`)
   })
   page.on('pageerror', (error) => errors.push(`page: ${error.message}`))
-  page.on('request', (request) => {
-    if (request.url().includes('internet-athi-hero-')) {
-      artworkRequests.push(request.url().split('/').at(-1))
-    }
-  })
 
   await page.goto(baseUrl, { waitUntil: 'networkidle' })
-  await page.waitForTimeout(1100)
+  await page.waitForTimeout(2800)
 
   const metrics = await page.evaluate((menuExpected) => {
     const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect().toJSON() ?? null
@@ -75,36 +66,43 @@ for (const viewport of viewports) {
     const inViewport = (bounds) => Boolean(
       bounds && bounds.left >= -1 && bounds.right <= innerWidth + 1 && bounds.top >= -1 && bounds.bottom <= innerHeight + 1
     )
-    const artwork = document.querySelector('.home-artwork__image')
-    const stage = rect('.home-stage')
-    const title = rect('.landing-release h1')
-    const actions = rect('.release-actions')
-    const indicator = rect('.release-indicator')
-    const actionLinks = [...document.querySelectorAll('.release-actions a')]
+    const overlaps = (a, b) => Boolean(
+      a && b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+    )
+    const portrait = document.querySelector('.signature-portrait img')
+    const stage = rect('.signature-stage')
+    const portraitBounds = rect('.signature-portrait')
+    const script = rect('.signature-name__script')
+    const prefix = rect('.signature-name__prefix')
+    const tagline = rect('.signature-stage__tagline')
+    const actions = rect('.signature-actions')
+    const location = rect('.signature-stage__location')
+    const header = rect('.site-header')
+    const actionLinks = [...document.querySelectorAll('.signature-actions a')]
     const routeLinks = [...document.querySelectorAll('.desktop-nav a')]
 
     return {
       horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 2,
       stage,
       afterwordTop: rect('.home-afterword')?.top ?? 0,
-      title,
-      actions,
-      indicator,
-      titleInViewport: inViewport(title),
+      portraitInViewport: inViewport(portraitBounds),
+      scriptInViewport: inViewport(script),
+      prefixInViewport: inViewport(prefix),
+      taglineInViewport: inViewport(tagline),
       actionsInViewport: inViewport(actions),
-      indicatorInViewport: inViewport(indicator),
+      locationInViewport: inViewport(location),
+      actionsClearOfPortrait: !overlaps(actions, portraitBounds),
+      actionsClearOfScript: !overlaps(actions, script),
+      actionsClearOfLocation: !overlaps(actions, location),
+      taglineClearOfPortrait: !overlaps(tagline, portraitBounds),
+      portraitClearOfHeader: Boolean(portraitBounds && header && portraitBounds.top >= header.bottom - 1),
       headingCount: document.querySelectorAll('h1').length,
-      titleLines: [...document.querySelectorAll('.landing-release__line')].map((line) => line.textContent?.trim()),
-      artworkLoaded: Boolean(artwork?.complete && artwork.naturalWidth > 0 && artwork.naturalHeight > 0),
-      artworkSource: artwork?.currentSrc.split('/').at(-1),
-      artworkDimensions: artwork ? { width: artwork.naturalWidth, height: artwork.naturalHeight } : null,
-      artworkPointerEvents: getComputedStyle(document.querySelector('.home-artwork')).pointerEvents,
+      portraitLoaded: Boolean(portrait?.complete && portrait.naturalWidth > 0 && portrait.naturalHeight > 0),
+      portraitSource: portrait?.currentSrc.split('/').at(-1),
+      threadVisible: visible('.signature-thread--upper') && visible('.signature-thread--lower') && visible('.signature-thread__dot'),
       menuModeCorrect: menuExpected
         ? visible('.menu-toggle') && !visible('.desktop-nav')
         : !visible('.menu-toggle') && visible('.desktop-nav'),
-      identityModeCorrect: menuExpected && innerHeight > innerWidth
-        ? !visible('.artist-introduction')
-        : visible('.artist-introduction'),
       actionLinks: actionLinks.map((link) => ({
         label: link.textContent?.trim(),
         href: link.getAttribute('href'),
@@ -114,12 +112,10 @@ for (const viewport of viewports) {
         height: link.getBoundingClientRect().height,
       })),
       routeLinks: routeLinks.map((link) => link.getAttribute('href')),
-      motionState: document.querySelector('.home-stage')?.getAttribute('data-motion-state'),
-      motionPlayState: getComputedStyle(document.querySelector('.home-stage')).getPropertyValue('--motion-play-state').trim(),
     }
   }, expectsMenu(viewport))
 
-  const headingAccessible = await page.getByRole('heading', { level: 1, name: 'Polymorphism' }).count() === 1
+  const headingAccessible = await page.getByRole('heading', { level: 1, name: 'internet athi' }).count() === 1
   const axeResults = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
     .analyze()
@@ -132,13 +128,6 @@ for (const viewport of viewports) {
     fullPage: false,
   })
 
-  const expectedArtwork = expectsMobileArtwork(viewport)
-    ? 'internet-athi-hero-mobile.png'
-    : 'internet-athi-hero-desktop.png'
-  const expectedDimensions = expectsMobileArtwork(viewport)
-    ? { width: 853, height: 1844 }
-    : { width: 1672, height: 941 }
-  const uniqueArtworkRequests = [...new Set(artworkRequests)]
   const actionsCorrect = (
     metrics.actionLinks.length === 2 &&
     metrics.actionLinks[0].href === 'https://open.spotify.com/album/2pduDMmEcftxkrJNIgZYS3' &&
@@ -152,8 +141,6 @@ for (const viewport of viewports) {
   )
   const result = {
     viewport,
-    expectedArtwork,
-    uniqueArtworkRequests,
     ...metrics,
     headingAccessible,
     seriousAxeViolations,
@@ -165,24 +152,25 @@ for (const viewport of viewports) {
     metrics.horizontalOverflow ||
     (metrics.stage?.height ?? 0) < viewport.height - 1 ||
     metrics.afterwordTop < viewport.height - 1 ||
-    !metrics.titleInViewport ||
+    !metrics.portraitInViewport ||
+    !metrics.scriptInViewport ||
+    !metrics.prefixInViewport ||
+    !metrics.taglineInViewport ||
     !metrics.actionsInViewport ||
-    !metrics.indicatorInViewport ||
+    !metrics.locationInViewport ||
+    !metrics.actionsClearOfPortrait ||
+    !metrics.actionsClearOfScript ||
+    !metrics.actionsClearOfLocation ||
+    !metrics.taglineClearOfPortrait ||
+    !metrics.portraitClearOfHeader ||
     metrics.headingCount !== 1 ||
     !headingAccessible ||
-    metrics.titleLines.join(' ') !== 'POLY MORPHISM' ||
-    !metrics.artworkLoaded ||
-    metrics.artworkSource !== expectedArtwork ||
-    JSON.stringify(metrics.artworkDimensions) !== JSON.stringify(expectedDimensions) ||
-    uniqueArtworkRequests.length !== 1 ||
-    uniqueArtworkRequests[0] !== expectedArtwork ||
-    metrics.artworkPointerEvents !== 'none' ||
+    !metrics.portraitLoaded ||
+    metrics.portraitSource !== 'nguwe-cover.jpg' ||
+    !metrics.threadVisible ||
     !metrics.menuModeCorrect ||
-    !metrics.identityModeCorrect ||
     !actionsCorrect ||
     JSON.stringify(metrics.routeLinks) !== JSON.stringify(['/listen', '/live', '/story', '/book']) ||
-    metrics.motionState !== 'running' ||
-    metrics.motionPlayState !== 'running' ||
     seriousAxeViolations.length > 0 ||
     errors.length > 0
   ) {
@@ -201,67 +189,28 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }
   const page = await context.newPage()
   await page.goto(baseUrl, { waitUntil: 'networkidle' })
   const result = await page.evaluate(() => {
-    const stage = document.querySelector('.home-stage')
-    const artwork = document.querySelector('.home-artwork')
-    const image = document.querySelector('.home-artwork__image')
-    const titleLine = document.querySelector('.landing-release__line > span')
+    const animationOf = (selector) => getComputedStyle(document.querySelector(selector)).animationName
     return {
-      artworkAnimation: getComputedStyle(artwork).animationName,
-      imageAnimation: getComputedStyle(image).animationName,
-      titleAnimation: getComputedStyle(titleLine).animationName,
-      artworkOpacity: getComputedStyle(artwork).opacity,
+      portraitAnimation: animationOf('.signature-portrait'),
+      scriptAnimation: animationOf('.signature-name__script'),
+      threadAnimation: animationOf('.signature-thread--upper'),
+      dotAnimation: animationOf('.signature-thread__dot'),
+      portraitOpacity: getComputedStyle(document.querySelector('.signature-portrait')).opacity,
+      threadClip: getComputedStyle(document.querySelector('.signature-thread--upper')).clipPath,
       horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 2,
-      motionState: stage?.getAttribute('data-motion-state'),
     }
   })
   report.reducedMotion.push({ viewport, ...result })
   if (
-    result.artworkAnimation !== 'none' ||
-    result.imageAnimation !== 'none' ||
-    result.titleAnimation !== 'none' ||
-    result.artworkOpacity !== '1' ||
-    result.motionState !== 'paused' ||
+    result.portraitAnimation !== 'none' ||
+    result.scriptAnimation !== 'none' ||
+    result.threadAnimation !== 'none' ||
+    result.dotAnimation !== 'none' ||
+    result.portraitOpacity !== '1' ||
+    result.threadClip !== 'none' ||
     result.horizontalOverflow
   ) {
     report.failures.push({ viewport, reducedMotion: result })
-  }
-  await context.close()
-}
-
-{
-  const viewport = { width: 1868, height: 912 }
-  const context = await browser.newContext({ viewport })
-  const page = await context.newPage()
-  await page.goto(baseUrl, { waitUntil: 'networkidle' })
-  await page.getByRole('link', { name: 'Listen', exact: true }).click()
-  await page.goBack({ waitUntil: 'networkidle' })
-  await page.waitForTimeout(100)
-  report.returnVisit = await page.evaluate(() => {
-    const stage = document.querySelector('.home-stage')?.getBoundingClientRect()
-    const artwork = document.querySelector('.home-artwork')?.getBoundingClientRect()
-    const image = document.querySelector('.home-artwork__image')
-    return {
-      entranceState: document.querySelector('.home-stage')?.getAttribute('data-entrance-state'),
-      artworkCentered: Boolean(stage && artwork && Math.abs(
-        (stage.left + stage.width / 2) - (artwork.left + artwork.width / 2),
-      ) < 1),
-      artworkFillsViewport: Boolean(stage && artwork && (
-        Math.abs(stage.left - artwork.left) < 1 &&
-        Math.abs(stage.right - artwork.right) < 1
-      )),
-      correctArtwork: image?.currentSrc.endsWith('/assets/internet-athi-hero-desktop.png'),
-      horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 2,
-    }
-  })
-  await page.screenshot({ path: '.qa/home/1868x912-return-visit.png', fullPage: false })
-  if (
-    report.returnVisit.entranceState !== 'settled' ||
-    !report.returnVisit.artworkCentered ||
-    !report.returnVisit.artworkFillsViewport ||
-    !report.returnVisit.correctArtwork ||
-    report.returnVisit.horizontalOverflow
-  ) {
-    report.failures.push({ returnVisit: report.returnVisit })
   }
   await context.close()
 }
@@ -282,7 +231,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }
   const menuClosedWithEscape = await page.getByRole('dialog', { name: 'Primary navigation' }).count() === 0
   const focusReturned = await menuButton.evaluate((button) => document.activeElement === button)
   await menuButton.click()
-  await page.locator('.mobile-menu__panel').getByRole('link', { name: /Listen/ }).click()
+  await page.locator('.mobile-menu').getByRole('link', { name: /Listen/ }).click()
+  await page.getByRole('dialog', { name: 'Primary navigation' }).waitFor({ state: 'detached', timeout: 2000 }).catch(() => {})
   const routeChanged = new URL(page.url()).pathname === '/listen'
   const menuClosedAfterRoute = await page.getByRole('dialog', { name: 'Primary navigation' }).count() === 0
   const bodyScrollRestored = await page.evaluate(() => getComputedStyle(document.body).overflow !== 'hidden')
@@ -318,15 +268,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }
     const menu = document.querySelector('.menu-toggle')?.getBoundingClientRect()
     return {
       horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 2,
-      actionsContained: contained('.release-actions'),
-      indicatorContained: contained('.release-indicator'),
+      actionsContained: contained('.signature-actions'),
+      locationContained: contained('.signature-stage__location'),
       headerControlsSeparated: Boolean(wordmark && menu && wordmark.right < menu.left),
     }
   })
   if (
     report.textEnlargement.horizontalOverflow ||
     !report.textEnlargement.actionsContained ||
-    !report.textEnlargement.indicatorContained ||
+    !report.textEnlargement.locationContained ||
     !report.textEnlargement.headerControlsSeparated
   ) {
     report.failures.push({ textEnlargement: report.textEnlargement })
@@ -341,7 +291,6 @@ console.log(JSON.stringify({
   viewportChecks: report.viewports.length,
   reducedMotion: report.reducedMotion,
   interactions: report.interactions,
-  returnVisit: report.returnVisit,
   textEnlargement: report.textEnlargement,
   failures: report.failures,
 }, null, 2))

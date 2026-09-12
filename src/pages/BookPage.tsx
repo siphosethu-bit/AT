@@ -4,6 +4,7 @@ import { ExternalLink } from '../components/ExternalLink'
 import { Seo } from '../components/Seo'
 import { artist, pressItems } from '../content/artist'
 import { isValidEmail } from '../lib/community/validation'
+import { requestJson } from '../lib/booking'
 
 const formatOptions = ['live ensemble', 'festival set', 'cultural programme', 'solo session', 'collaboration']
 
@@ -16,6 +17,9 @@ interface BriefErrors {
   venue?: string
   date?: string
   email?: string
+  city?: string
+  who?: string
+  consent?: string
 }
 
 function fieldSize(placeholder: string, value: string, min = 3) {
@@ -45,6 +49,12 @@ export function BookPage() {
   const [errors, setErrors] = useState<BriefErrors>({})
   const [sentAt, setSentAt] = useState<Date | null>(null)
   const [venuePulsing, setVenuePulsing] = useState(false)
+  const [consent, setConsent] = useState(false)
+  const [website, setWebsite] = useState('')
+  const [sending, setSending] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const [reference, setReference] = useState('')
+  const [requestId] = useState(() => crypto.randomUUID())
 
   const venuePulseTimeout = useRef<number | undefined>(undefined)
 
@@ -67,12 +77,21 @@ export function BookPage() {
     venuePulseTimeout.current = window.setTimeout(() => setVenuePulsing(false), 160)
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const emailDraft = `mailto:${artist.bookingEmail}?subject=${encodeURIComponent(`Booking enquiry: ${venue} / ${date}`)}&body=${encodeURIComponent([
+    `Venue: ${venue}`, `City: ${city}`, `Proposed date: ${date}`, `Format: ${format || 'To discuss'}`,
+    `Audience: ${audience || 'To discuss'}`, `Contact: ${who}`, `Reply email: ${email}`, '', room,
+  ].join('\n'))}`
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (sending || sentAt) return
 
     const nextErrors: BriefErrors = {}
     if (!venue.trim()) nextErrors.venue = 'Add a venue'
     if (!date.trim()) nextErrors.date = 'Add a date'
+    if (!city.trim()) nextErrors.city = 'Add the city'
+    if (!who.trim()) nextErrors.who = 'Add your name and organisation'
+    if (!consent) nextErrors.consent = 'Please agree to share this brief with the booking team'
     if (!email.trim()) {
       nextErrors.email = 'Add an email we can reply to'
     } else if (!isValidEmail(email)) {
@@ -80,23 +99,22 @@ export function BookPage() {
     }
 
     setErrors(nextErrors)
-    if (Object.keys(nextErrors).length > 0) return
-
-    const subject = `Booking enquiry: ${venue.trim()} / ${date.trim()}`
-    const body = [
-      `Venue: ${venue.trim()}`,
-      `City: ${city.trim() || 'Not supplied'}`,
-      `Proposed date: ${date.trim()}`,
-      `Format: ${format || 'Not specified'}`,
-      `Expected audience: ${audience.trim() || 'Not supplied'}`,
-      `Reply email: ${email.trim()}`,
-      '',
-      `About the room: ${room.trim() || 'Not supplied'}`,
-      `Who's asking: ${who.trim() || 'Not supplied'}`,
-    ].join('\n')
-
-    window.location.href = `mailto:${artist.bookingEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-    setSentAt(new Date())
+    if (Object.keys(nextErrors).length > 0) {
+      const first = Object.keys(nextErrors)[0]
+      document.getElementById(`brief-${first}`)?.focus()
+      return
+    }
+    setSending(true)
+    setSubmitError('')
+    try {
+      const result = await requestJson<{ reference: string }>('/api/booking', {
+        method: 'POST', body: JSON.stringify({ id: requestId, details: { venue, city, date, format, audience, email, room, who }, consent, website }),
+      })
+      setReference(result.reference)
+      setSentAt(new Date())
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'We could not confirm your submission. Please try again.')
+    } finally { setSending(false) }
   }
 
   const sent = sentAt !== null
@@ -114,16 +132,19 @@ export function BookPage() {
           <p className="booking-brief__kicker">Archive 04 / Booking desk</p>
           <h1 id="booking-brief-title">Bring the room<br />to Internet Athi.</h1>
           <p className="booking-brief__lede">
-            One sentence is enough to start. As you fill it in, the poster on the right takes shape — that's the
-            brief the team reads, and it's what we'll reply to within three working days.
+            One sentence is enough to start. As you fill it in, your poster takes shape.
+            Share the room you have in mind, and the team will reply with availability and next steps.
           </p>
 
           <form className="booking-brief__form" onSubmit={handleSubmit} noValidate>
+            <fieldset className="booking-brief__fieldset" disabled={sending || sent}>
+            <legend className="sr-only">Your performance brief</legend>
             <p className="booking-brief__sentence">
               We'd like Internet Athi to play at
               <input
                 id="brief-venue"
                 type="text"
+                maxLength={160}
                 placeholder="the venue"
                 size={fieldSize('the venue', venue)}
                 aria-label="Venue"
@@ -139,6 +160,9 @@ export function BookPage() {
                 placeholder="the city"
                 size={fieldSize('the city', city)}
                 aria-label="City"
+                maxLength={100}
+                aria-invalid={Boolean(errors.city)}
+                aria-describedby={errors.city ? 'brief-error-city' : undefined}
                 value={city}
                 onChange={(event) => setCity(event.target.value)}
               />
@@ -147,6 +171,7 @@ export function BookPage() {
                 id="brief-date"
                 type="text"
                 placeholder="a date"
+                maxLength={100}
                 size={fieldSize('a date', date)}
                 aria-label="Proposed date"
                 aria-invalid={errors.date ? true : undefined}
@@ -180,6 +205,7 @@ export function BookPage() {
                 placeholder="200"
                 size={fieldSize('200', audience)}
                 aria-label="Expected audience"
+                maxLength={60}
                 value={audience}
                 onChange={(event) => setAudience(event.target.value)}
               />
@@ -188,6 +214,8 @@ export function BookPage() {
                 id="brief-email"
                 className="is-email"
                 type="email"
+                autoComplete="email"
+                maxLength={254}
                 placeholder="you@promoter.co.za"
                 size={fieldSize('you@promoter.co.za', email)}
                 aria-label="Your email"
@@ -206,6 +234,9 @@ export function BookPage() {
                 {errors.venue ? <li id="brief-error-venue">{errors.venue}</li> : null}
                 {errors.date ? <li id="brief-error-date">{errors.date}</li> : null}
                 {errors.email ? <li id="brief-error-email">{errors.email}</li> : null}
+                {errors.city ? <li id="brief-error-city">{errors.city}</li> : null}
+                {errors.who ? <li id="brief-error-who">{errors.who}</li> : null}
+                {errors.consent ? <li id="brief-error-consent">{errors.consent}</li> : null}
               </ul>
             ) : null}
 
@@ -215,6 +246,7 @@ export function BookPage() {
                 <textarea
                   id="brief-room"
                   rows={3}
+                  maxLength={3000}
                   placeholder="Capacity, stage, backline, the mood you're after."
                   value={room}
                   onChange={(event) => setRoom(event.target.value)}
@@ -224,6 +256,10 @@ export function BookPage() {
                 <label htmlFor="brief-who">Who's asking</label>
                 <input
                   id="brief-who"
+                  maxLength={160}
+                  autoComplete="name"
+                  aria-invalid={Boolean(errors.who)}
+                  aria-describedby={errors.who ? 'brief-error-who' : undefined}
                   type="text"
                   placeholder="Your name and organisation"
                   value={who}
@@ -232,18 +268,26 @@ export function BookPage() {
               </div>
             </div>
 
+            <div className="sr-only" aria-hidden="true"><label>Website<input value={website} onChange={(event) => setWebsite(event.target.value)} tabIndex={-1} autoComplete="off" /></label></div>
+            <label className="booking-consent">
+              <input id="brief-consent" type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} aria-describedby={errors.consent ? 'brief-error-consent' : undefined} />
+              <span>I agree to share and store these details with Internet Athi’s booking team to handle this enquiry. This does not subscribe me to marketing.</span>
+            </label>
             <div className="booking-brief__actions">
               <button className="action-link action-link--primary booking-brief__submit" type="submit">
-                Send the brief
+                {sending ? 'Sending your brief…' : sent ? 'Enquiry received' : 'Send the brief'}
               </button>
               {sent ? (
-                <p className="booking-brief__ok" role="status">Brief sent. Watch your inbox.</p>
+                <p className="booking-brief__ok">Not a confirmed booking.</p>
               ) : (
                 <p className="booking-brief__hint">
                   Not a confirmed booking. We'll come back with availability, fee and next steps.
                 </p>
               )}
             </div>
+            </fieldset>
+            {sent && <p className="booking-feedback booking-feedback--success" role="status">Your enquiry is saved. Reference: <strong>{reference}</strong>.<br />The team will reply to {email}. Availability and fees are still to be agreed.</p>}
+            {submitError && <div className="booking-feedback" role="alert"><p>{submitError}</p><a href={emailDraft}>Open this brief in your email app ↗</a><p>An email draft is not a sent enquiry—please send it from your email app.</p></div>}
           </form>
         </div>
 
@@ -309,8 +353,8 @@ export function BookPage() {
       </section>
 
       <section className="press-contact" aria-labelledby="booking-support-title">
-        <p className="section-index">Booking support</p>
         <div>
+          <p className="index-label">Booking support</p>
           <h2 id="booking-support-title">Need a direct conversation?</h2>
           <p>
             For programming, media and collaboration enquiries, write directly to the booking team. Press materials are available below.
