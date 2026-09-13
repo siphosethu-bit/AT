@@ -65,6 +65,19 @@ body::before { opacity: .018; }
 .booking-brief__sentence { overflow-wrap: anywhere; }
 .booking-brief__fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
 .booking-brief__field input, .booking-brief__field textarea { min-height: 44px; }
+.song-liner-note { display: grid; grid-template-columns: minmax(0,.9fr) minmax(0,1fr); align-items: center; gap: clamp(2rem,7vw,8rem); padding: clamp(4rem,8vw,8rem) max(var(--page-pad),6%); border-top: 1px solid var(--line); background: #eae5da; }
+.song-liner-note__sleeve { position: relative; aspect-ratio: 1; max-width: 470px; overflow: hidden; background: #b58b55; }
+.song-liner-note__sleeve > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: saturate(.45) brightness(.72); }
+.song-liner-note__record { position: absolute; width: 85%; height: 85%; border-radius: 50%; left: 25%; top: 7.5%; display: grid; place-items: center; background: repeating-radial-gradient(circle,#201d18 0 3px,#383329 4px,#201d18 5px); box-shadow: -16px 12px 30px #20150855; }
+.song-liner-note__record > span { display: grid; align-content: center; text-align: center; width: 42%; height: 42%; border-radius: 50%; background: #ded4b7; color: #262017; font: 500 clamp(2rem,4vw,4rem) var(--serif); }
+.song-liner-note__record small { font: .5rem var(--mono); text-transform: uppercase; margin-top: .5rem; }
+.song-liner-note__catalogue { position: absolute; left: 1.5rem; bottom: 1.5rem; color: #fff5db; font: .62rem var(--mono); text-transform: uppercase; letter-spacing: .12em; }
+.song-liner-note__copy h2 { font: 500 clamp(2.6rem,4.8vw,5rem)/.96 var(--serif); margin: 1rem 0 1.75rem; letter-spacing: -.025em; }
+.song-liner-note__copy > p:not(.index-label,.song-liner-note__source) { max-width: 43ch; margin: 1rem 0; font-size: .94rem; color: #61584c; line-height: 1.8; }
+.song-liner-note__listen { display: inline-flex; align-items: center; gap: 2rem; min-height: 48px; border-bottom: 1px solid #82725d; font-size: .87rem; margin: .5rem 0 1.5rem; }
+.song-liner-note__listen:hover { color: var(--accent); }
+.song-liner-note__source { color: #6b6257; font-size: .65rem; line-height: 1.8; max-width: 53ch; }
+.song-liner-note__source a { text-decoration: underline; text-underline-offset: 3px; }
 @media (max-width: 760px) {
   :root { --header-height: 4.5rem; }
   .site-header.paper-header { padding: 0 7.5%; gap: 1rem; }
@@ -72,6 +85,17 @@ body::before { opacity: .018; }
   .paper-header .menu-toggle { display: flex; padding: 0; }
   .paper-header .site-wordmark { font-size: .92rem; letter-spacing: .22em; }
   .site-footer__artist { justify-self: start; }
+  .live-map__scrim { z-index: 99; background: #211e1966; }
+  .live-map__card, .live-map__card.is-visible {
+    z-index: 100; top: 50% !important; left: 50% !important; bottom: auto; right: auto;
+    width: calc(100% - 2rem); max-width: 420px; max-height: calc(100dvh - 3rem);
+    translate: -50% -50%; transform: none; overflow-y: auto; overscroll-behavior: contain;
+  }
+  .live-map__marker.is-open .live-map__marker-label { color: var(--ink); background: var(--paper); }
+  .mobile-menu__list { flex: 0 1 auto; }
+  .mobile-menu__link { min-height: 64px; }
+  .song-liner-note { grid-template-columns: 1fr; padding: 3rem 7%; gap: 2.5rem; }
+  .song-liner-note__sleeve { width: 100%; max-width: 360px; }
 }
 @media (min-width: 761px) {
   .paper-header .menu-toggle { display: none; }

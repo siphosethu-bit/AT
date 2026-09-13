@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CityRequestPanel } from '../components/liveMap/CityRequestPanel'
 import { LiveMap } from '../components/LiveMap'
 import { Seo } from '../components/Seo'
-import { liveEvents } from '../content/artist'
+import { useSiteContent } from '../context/SiteContentContext'
+import { SongLinerNote } from '../components/SongLinerNote'
 import { useTourRequest } from '../context/TourRequestContext'
 import { trackEvent } from '../lib/analytics'
 import { getLiveEventStatus, sortLiveEvents } from '../lib/liveEvents'
@@ -20,6 +21,7 @@ const filterLabels: Record<EventFilter, string> = {
 }
 
 export function LivePage() {
+  const { shows: liveEvents } = useSiteContent()
   const { openPanel } = useTourRequest()
   const { pathname } = useRouter()
   const [filter, setFilter] = useState<EventFilter>('upcoming')
@@ -36,7 +38,7 @@ export function LivePage() {
       result.all += 1
       return result
     }, { upcoming: 0, past: 0, all: 0 })
-  ), [now])
+  ), [now, liveEvents])
 
   const events = useMemo(() => {
     if (filter === 'upcoming') {
@@ -48,14 +50,14 @@ export function LivePage() {
     const upcoming = sortLiveEvents(liveEvents.filter((event) => getLiveEventStatus(event, now) !== 'past'))
     const past = sortLiveEvents(liveEvents.filter((event) => getLiveEventStatus(event, now) === 'past'), 'desc')
     return [...upcoming, ...past]
-  }, [filter, now])
+  }, [filter, now, liveEvents])
 
   // Confirmed events take visual priority: a city already showing a performance marker doesn't
   // also get a separate demand marker.
   const visibleDemandPoints = useMemo(() => {
     const confirmedCities = new Set(liveEvents.map((event) => event.city.trim().toLowerCase()))
     return demandPoints.filter((point) => !confirmedCities.has(point.city.trim().toLowerCase()))
-  }, [demandPoints])
+  }, [demandPoints, liveEvents])
 
   useEffect(() => {
     let cancelled = false
@@ -143,6 +145,7 @@ export function LivePage() {
         </footer>
       </section>
 
+      <SongLinerNote />
       <CityRequestPanel />
     </>
   )

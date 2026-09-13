@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Seo } from '../components/Seo'
-import { artist, liveEvents } from '../content/artist'
+import { artist } from '../content/artist'
+import type { LiveEvent } from '../content/types'
+import { useSiteContent } from '../context/SiteContentContext'
+import { ArtistContentManager } from '../components/ArtistContentManager'
+import type { ContentEntry } from '../lib/siteContent'
 import { Link, useRouter } from '../lib/router'
 import { ApiError, bookingStatuses, bookingStatusLabels, requestJson, type BookingEnquiry, type BookingStatus } from '../lib/booking'
 import { sampleEnquiries } from '../lib/artistDeskDemo'
 import { formatLiveEventDate, getLiveEventStatus, sortLiveEvents } from '../lib/liveEvents'
 import '../styles/artist-desk.css'
 
-type DeskView = 'desk' | 'enquiries' | 'shows'
+type DeskView = 'desk' | 'enquiries' | 'shows' | 'releases'
 type ArtistUser = { id: string; email: string }
-type ShowConnection = { configured: boolean; events: { id: string; title: string; date: string; venue: string; city: string; url: string }[] }
+type ShowConnection = { configured: boolean; events: { id: string; title: string; date: string; venue: string; city: string; url: string; importData: LiveEvent | null }[] }
 
 function SampleChart() {
   const months = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep']
@@ -17,7 +21,7 @@ function SampleChart() {
   return <section className="desk-chart" aria-labelledby="desk-chart-title">
     <header><div><p className="desk-label">A sense of momentum</p><h2 id="desk-chart-title">The listening room is growing.</h2></div><span className="desk-badge">Sample data</span></header>
     <div className="desk-chart__metric"><strong>8.2k</strong><span>illustrative monthly listeners<br />April–September 2026</span></div>
-    <svg viewBox="0 0 600 150" role="img" aria-label="Sample monthly listeners: April 2100, May 3400, June 2900, July 4800, August 6100, September 8200. Not live analytics.">
+    <svg viewBox="0 0 600 150" preserveAspectRatio="none" role="img" aria-label="Sample monthly listeners: April 2100, May 3400, June 2900, July 4800, August 6100, September 8200. Not live analytics.">
       <defs><linearGradient id="desk-chart-fill" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#bd3823" stopOpacity=".16" /><stop offset="1" stopColor="#bd3823" stopOpacity="0" /></linearGradient></defs>
       {[35, 80, 125].map((y) => <line key={y} x1="10" x2="590" y1={y} y2={y} stroke="#d5cec3" strokeDasharray="3 6" />)}
       <path d="M10 120 L126 101 L242 108 L358 80 L474 61 L590 30 L590 145 L10 145Z" fill="url(#desk-chart-fill)" />
@@ -73,6 +77,7 @@ function EnquiryDetail({ enquiry, preview, onClose, onSave }: {
 }
 
 export function AdminPage() {
+  const { shows: liveEvents } = useSiteContent()
   const { pathname, navigate } = useRouter()
   const preview = pathname === '/admin/preview'
   const [user, setUser] = useState<ArtistUser | null>(null)
@@ -92,6 +97,8 @@ export function AdminPage() {
   const [selected, setSelected] = useState<BookingEnquiry | null>(null)
   const [shows, setShows] = useState<ShowConnection | null>(null)
   const [showError, setShowError] = useState('')
+  const [importedShow, setImportedShow] = useState<ContentEntry | null>(null)
+  const clearImportedShow = useCallback(() => setImportedShow(null), [])
 
   useEffect(() => {
     const robots = document.createElement('meta'); robots.name = 'robots'; robots.content = 'noindex,nofollow'; document.head.appendChild(robots)
@@ -169,12 +176,12 @@ export function AdminPage() {
     </main> : <>
       {preview && <div className="desk-preview-banner"><span><strong>Preview mode</strong> · Fictional enquiries and sample metrics. Changes last only while this page is open.</span><button type="button" onClick={() => navigate('/admin')}>Go to real sign in →</button></div>}
       <div className="artist-workspace">
-        <aside className="desk-navigation"><p className="desk-label">Your studio</p><nav aria-label="Artist desk">{([['desk','The desk'],['enquiries','Enquiries'],['shows','Live & shows']] as const).map(([key,label],index) => <button type="button" key={key} aria-current={view === key ? 'page' : undefined} onClick={() => { setView(key); setSelected(null) }}><span>0{index+1}</span>{label}{key === 'enquiries' && newCount > 0 && <b>{newCount}</b>}</button>)}</nav><p className="desk-navigation__note">Make space<br />for the music.<span>Internet Athi<br />Cape Town, South Africa</span></p></aside>
+        <aside className="desk-navigation"><p className="desk-label">Artist dashboard</p><nav aria-label="Artist desk">{([['desk','Overview'],['enquiries','Enquiries'],['shows','Live & shows'],['releases','Releases']] as const).map(([key,label],index) => <button type="button" key={key} aria-current={view === key ? 'page' : undefined} onClick={() => { setView(key); setSelected(null) }}><span>0{index+1}</span>{label}{key === 'enquiries' && newCount > 0 && <b>{newCount}</b>}</button>)}</nav><p className="desk-navigation__note">Make space<br />for the music.<span>Internet Athi<br />Cape Town, South Africa</span></p></aside>
         <main className="desk-content" id="main-content">
           <div className="desk-dateline"><p className="desk-label">Internet Athi / {view === 'shows' ? 'The live programme' : 'Booking correspondence'}</p><span>{preview ? '12 September 2026 · Sample' : new Intl.DateTimeFormat('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date())}</span></div>
-          <header className="desk-heading"><h1>{view === 'desk' ? <>Your next <em>chapter.</em></> : view === 'enquiries' ? <>An open <em>conversation.</em></> : <>From here, <em>live.</em></>}</h1><p>{view === 'desk' ? 'A little organisation. More room to create.' : view === 'enquiries' ? 'The people, places and possibilities waiting for your reply.' : 'Keep the live programme in one place, from announcement to stage.'}</p></header>
+          <header className="desk-heading"><h1>{view === 'desk' ? <>Your studio, <em>at a glance.</em></> : view === 'enquiries' ? <>Booking <em>enquiries.</em></> : view === 'releases' ? <>Your recorded <em>world.</em></> : <>The live <em>programme.</em></>}</h1><p>{view === 'desk' ? 'Your booking pipeline, next performance and publishing tools.' : view === 'enquiries' ? 'The people, places and possibilities waiting for your reply.' : view === 'releases' ? 'Artwork, music and the stories taking their place in the archive.' : 'Prepare a show, place it on the map and publish when you are ready.'}</p>{view === 'desk' && <div className="desk-quick-actions"><button type="button" className="desk-text-button" onClick={() => setView('shows')}>+ Manage shows</button><button type="button" className="desk-text-button" onClick={() => setView('releases')}>+ Manage releases</button></div>}</header>
           {loadError && <div className="desk-feedback is-error" role="alert">{loadError}<button className="desk-text-button" type="button" onClick={() => void loadEnquiries()}>Try again</button></div>}
-          {view !== 'shows' && <>
+          {(view === 'desk' || view === 'enquiries') && <>
             <div className="desk-totals" aria-label="Enquiry summary">{[['new','Awaiting your reply',newCount],['reviewing','In conversation',conversationCount],['confirmed','Confirmed bookings',confirmedCount]].map(([key,label,count]) => <button key={key} type="button" onClick={() => { setFilter(String(key)); setView('enquiries') }}><span>{label}</span><strong>{loading && !enquiries.length ? '—' : count}<i>↗</i></strong></button>)}</div>
             {hasMore && <p className="desk-footnote">Counts cover loaded enquiries. Load more in Enquiries to include older requests.</p>}
             {view === 'desk' ? <div className="desk-overview-grid"><section className="desk-inbox"><header className="desk-section-heading"><h2>First things first.</h2><button type="button" className="desk-text-button" onClick={() => { setFilter('all'); setView('enquiries') }}>All enquiries ↗</button></header>
@@ -189,9 +196,12 @@ export function AdminPage() {
               {hasMore && <button type="button" className="desk-button" disabled={loading} onClick={() => void loadEnquiries(enquiries.length)}>{loading ? 'Loading…' : 'Load older enquiries'}</button>}
             </section>}
           </>}
-          {view === 'shows' && <div className="desk-shows"><section className="desk-shows__connection"><p className="desk-label">Connected stage / Bandsintown</p><h2>One programme.<br />Everywhere it needs to be.</h2><p>Manage your shows in Bandsintown for Artists. Once your artist API access is connected, this desk can read your upcoming events. Public website listings stay unchanged until that integration is enabled.</p><span className="desk-badge">{shows?.configured ? 'Connected · Read-only preview' : 'Awaiting connection'}</span><ol className="desk-connection-steps"><li><span>01</span>Claim or confirm your artist profile.</li><li><span>02</span>Add approved API access in server settings.</li><li><span>03</span>Check the imported shows before going live.</li></ol><div className="desk-inline-actions"><a className="desk-button" href="https://artists.bandsintown.com/" target="_blank" rel="noopener noreferrer">Manage on Bandsintown ↗</a><button type="button" className="desk-text-button" disabled={busy || preview} onClick={checkShows}>{busy ? 'Checking…' : 'Check connection'}</button></div>{preview && <p className="desk-footnote">Connection checks are available after artist sign-in.</p>}{shows && !shows.configured && <p className="desk-feedback" role="status">No API credentials configured yet. Your existing live page is unchanged.</p>}{showError && <p className="desk-feedback is-error" role="alert">{showError}</p>}</section>
-            <section className="desk-shows__list"><p className="desk-label">{shows?.configured ? 'Imported preview · Not published here' : 'On your website'}</p><h2>The live programme.</h2>{shows?.configured ? (shows.events.length ? shows.events.map((show) => <article key={show.id}><small>{show.date.slice(0,10)}</small><h3>{show.title || show.venue}</h3><p>{show.venue} · {show.city}</p><a className="desk-text-button" href={show.url} target="_blank" rel="noopener noreferrer">View on Bandsintown ↗</a></article>) : <p>No upcoming events returned by Bandsintown.</p>) : upcoming.length ? upcoming.map((show) => <article key={show.id}><small>{formatLiveEventDate(show)}</small><h3>{show.title}</h3><p>{show.venue} · {show.city}</p></article>) : <div className="desk-empty"><p>No upcoming public dates.</p><span>A confirmed enquiry is not automatically a public show. Agree the details and announce when you are ready.</span></div>}<Link to="/live" className="desk-text-button">Visit the public live page ↗</Link></section>
-          </div>}
+          {view === 'shows' && <>
+            <ArtistContentManager kind="show" preview={preview} imported={importedShow} onImportUsed={clearImportedShow} />
+            <div className="desk-shows"><section className="desk-shows__connection"><p className="desk-label">Connected stage / Bandsintown</p><h2>Bring your dates<br />into the picture.</h2><p>Fetch your upcoming Bandsintown events, review their map locations, then publish them to this website. Announcements on Bandsintown itself are managed in Bandsintown for Artists.</p><span className="desk-badge">{shows?.configured ? 'Connected · Review before publishing' : 'Awaiting connection'}</span><ol className="desk-connection-steps"><li><span>01</span>Confirm your artist profile and approved API access.</li><li><span>02</span>Fetch dates and review their location details.</li><li><span>03</span>Publish each approved show to your map.</li></ol><div className="desk-inline-actions"><a className="desk-button" href="https://artists.bandsintown.com/" target="_blank" rel="noopener noreferrer">Open Bandsintown ↗</a><button type="button" className="desk-text-button" disabled={busy || preview} onClick={checkShows}>{busy ? 'Checking…' : 'Fetch Bandsintown dates'}</button></div>{preview && <p className="desk-footnote">Connection checks are available after artist sign-in.</p>}{shows && !shows.configured && <p className="desk-feedback" role="status">No API credentials configured yet. Your existing live page is unchanged.</p>}{showError && <p className="desk-feedback is-error" role="alert">{showError}</p>}</section>
+            <section className="desk-shows__list"><p className="desk-label">{shows?.configured ? 'Fetched from Bandsintown' : 'On your website'}</p><h2>The live programme.</h2>{shows?.configured ? (shows.events.length ? shows.events.map((show) => <article key={show.id}><small>{show.date.slice(0,10)}</small><h3>{show.title || show.venue}</h3><p>{show.venue} · {show.city}</p><a className="desk-text-button" href={show.url} target="_blank" rel="noopener noreferrer">View on Bandsintown ↗</a>{show.importData ? <button type="button" className="desk-button" onClick={() => setImportedShow({ id: show.importData!.id, kind: 'show', state: 'draft', data: show.importData!, updated_at: new Date().toISOString() })}>Review for the map →</button> : <p className="desk-footnote">This event is outside the current South African map or is missing location details.</p>}</article>) : <p>No upcoming events returned by Bandsintown.</p>) : upcoming.length ? upcoming.map((show) => <article key={show.id}><small>{formatLiveEventDate(show)}</small><h3>{show.title}</h3><p>{show.venue} · {show.city}</p></article>) : <div className="desk-empty"><p>No upcoming public dates.</p><span>A confirmed enquiry is not automatically a public show. Agree the details and announce when you are ready.</span></div>}<Link to="/live" className="desk-text-button">Visit the public live page ↗</Link></section></div>
+          </>}
+          {view === 'releases' && <ArtistContentManager kind="release" preview={preview} />}
           <footer className="desk-footer"><span>Internet Athi · The studio</span><span>{preview ? 'Sample workspace · No real bookings' : 'Private correspondence · Artist & team only'}</span></footer>
         </main>
       </div>

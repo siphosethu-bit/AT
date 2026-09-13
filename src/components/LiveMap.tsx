@@ -7,7 +7,9 @@ import {
   useRef,
   useState,
   type SVGProps,
+  type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import type { LiveEvent } from '../content/types'
 import { downloadLiveEventCalendar } from '../lib/liveEventCalendar'
 import { formatLiveEventDate, formatLiveEventTime, getLiveEventStatus } from '../lib/liveEvents'
@@ -109,9 +111,36 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
   const provinceRefs = useRef(new Map<string, SVGPathElement>())
   const closeTimeoutRef = useRef<number | undefined>(undefined)
   const [revealed, setRevealed] = useState(false)
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 760px)').matches)
   const [openTarget, setOpenTarget] = useState<OpenTarget | null>(null)
   const [cardVisible, setCardVisible] = useState(false)
   const [cardStyle, setCardStyle] = useState<{ left: number; top: number; transformOrigin: string } | null>(null)
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 760px)')
+    const update = () => setIsMobile(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  const renderOverlay = (children: ReactNode) => isMobile ? createPortal(children, document.body) : children
+
+  useEffect(() => {
+    if (!isMobile || !openTarget) return
+    const root = document.getElementById('root')
+    const previousOverflow = document.body.style.overflow
+    root?.setAttribute('inert', '')
+    document.body.style.overflow = 'hidden'
+    const focusFrame = requestAnimationFrame(() => cardRef.current?.querySelector<HTMLButtonElement>('button')?.focus())
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return
+      const elements = Array.from(cardRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? [])
+      const first = elements[0], last = elements.at(-1)
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+    }
+    document.addEventListener('keydown', trapFocus)
+    return () => { cancelAnimationFrame(focusFrame); root?.removeAttribute('inert'); document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', trapFocus) }
+  }, [isMobile, openTarget])
 
   useEffect(() => {
     const wrapper = wrapperRef.current
@@ -293,8 +322,10 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
       : provinceRefs.current.get(openTarget.name)
     setCardVisible(false)
     window.clearTimeout(closeTimeoutRef.current)
-    closeTimeoutRef.current = window.setTimeout(() => setOpenTarget(null), CLOSE_TRANSITION_MS)
-    window.requestAnimationFrame(() => trigger?.focus())
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setOpenTarget(null)
+      window.requestAnimationFrame(() => trigger?.focus())
+    }, CLOSE_TRANSITION_MS)
   }, [openTarget])
 
   const hop = useCallback((direction: number) => {
@@ -489,11 +520,8 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
         ))}
       </div>
 
-      {openTarget ? (
-        <div className={`live-map__scrim${cardVisible ? ' is-visible' : ''}`} aria-hidden="true" />
-      ) : null}
-
-      {openTarget ? (
+      {openTarget ? renderOverlay(<>
+        <div className={`live-map__scrim${cardVisible ? ' is-visible' : ''}`} aria-hidden="true" onClick={closeCard} />
         <div
           ref={cardRef}
           className={`live-map__card${cardVisible ? ' is-visible' : ''}`}
@@ -504,7 +532,7 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
             visibility: cardStyle ? 'visible' : 'hidden',
           }}
           role="dialog"
-          aria-modal="false"
+          aria-modal={isMobile}
           aria-labelledby={cardHeadingId}
           onClick={(domEvent) => domEvent.stopPropagation()}
         >
@@ -601,7 +629,7 @@ export function LiveMap({ events, demandPoints = [], onDemandMarkerSelect }: Liv
             </div>
           ) : null}
         </div>
-      ) : null}
+      </>) : null}
     </div>
   )
 }

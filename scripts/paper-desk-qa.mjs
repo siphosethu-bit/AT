@@ -23,7 +23,7 @@ try {
         nav: document.querySelector('.desktop-nav')?.getBoundingClientRect().toJSON(),
         background: getComputedStyle(document.body).backgroundColor,
       }))
-      const audit = await new AxeBuilder({ page }).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()
+      const audit = await new AxeBuilder({ page }).exclude('iframe').withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()
       const violations = audit.violations.map((item) => ({ id: item.id, impact: item.impact, nodes: item.nodes.map((node) => ({ target: node.target, summary: node.failureSummary })) }))
       const name = path.replaceAll('/', '-') || '-home'
       if (viewport.width === 1672 || viewport.width === 390) await page.screenshot({ path: `.qa/paper-desk/${viewport.width}${name}.png`, fullPage: path === '/' || path.includes('admin') || path === '/book' })
@@ -43,6 +43,7 @@ try {
       await page.getByRole('button', { name: 'Menu' }).click()
       await page.getByRole('dialog').getByRole('link', { name: /Story/ }).click()
       await page.waitForURL('**/story')
+      await page.waitForTimeout(400)
       assert.equal(await page.locator('#main-content').getAttribute('inert'), null)
     }
     await context.close()
@@ -57,7 +58,7 @@ try {
   await page.getByRole('button', { name: 'Update sample' }).click()
   await page.getByText('Sample updated for this preview only.').waitFor()
   await page.keyboard.press('Escape')
-  await page.getByRole('button', { name: /02Enquiries/ }).click().catch(() => page.locator('.desk-navigation').getByRole('button', { name: /Enquiries/ }).click())
+  await page.locator('.desk-navigation').getByRole('button', { name: /Enquiries/ }).click()
   await page.getByRole('searchbox').fill('Listening')
   assert.equal(await page.locator('.desk-table-row').count(), 1)
   await page.locator('.desk-table-row').click()

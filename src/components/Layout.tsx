@@ -8,6 +8,7 @@ import { ArrowIcon, HomeIcon } from './MenuIcons'
 import { ExternalLink } from './ExternalLink'
 
 const navigation = [
+  { to: '/', label: 'Home', index: '00', descriptor: 'The beginning' },
   { to: '/listen', label: 'Listen', index: '01', descriptor: 'Music' },
   { to: '/live', label: 'Live', index: '02', descriptor: 'Performances' },
   { to: '/story', label: 'Story', index: '03', descriptor: 'Biography' },

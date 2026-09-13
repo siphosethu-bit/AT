@@ -1,7 +1,8 @@
 import { CommunityCTA } from '../components/community/CommunityCTA'
 import { ExternalLink } from '../components/ExternalLink'
 import { Seo } from '../components/Seo'
-import { artist, liveEvents, polymorphism } from '../content/artist'
+import { artist, polymorphism } from '../content/artist'
+import { useSiteContent } from '../context/SiteContentContext'
 import { formatLiveEventDate, getLiveEventStatus, sortLiveEvents } from '../lib/liveEvents'
 import { Link } from '../lib/router'
 
@@ -23,6 +24,7 @@ function DiagonalArrow() {
 }
 
 export function HomePage() {
+  const { shows: liveEvents } = useSiteContent()
   const nextEvent = sortLiveEvents(
     liveEvents.filter((event) => getLiveEventStatus(event) !== 'past'),
   )[0]

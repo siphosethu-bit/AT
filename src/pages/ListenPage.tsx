@@ -3,10 +3,12 @@ import { DiscographySurfer } from '../components/DiscographySurfer'
 import { ExternalLink } from '../components/ExternalLink'
 import { Seo } from '../components/Seo'
 import { VideoModal } from '../components/VideoModal'
-import { discographyReleases, musicVideos, polymorphism } from '../content/artist'
+import { musicVideos, polymorphism } from '../content/artist'
+import { useSiteContent } from '../context/SiteContentContext'
 import type { MusicVideo } from '../content/types'
 
 export function ListenPage() {
+  const { releases: discographyReleases } = useSiteContent()
   const [activeTrack, setActiveTrack] = useState(polymorphism.tracks[0])
   const [previewVideo, setPreviewVideo] = useState(musicVideos[0])
   const [selectedVideo, setSelectedVideo] = useState<MusicVideo | null>(null)

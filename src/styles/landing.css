@@ -26,8 +26,8 @@
   .signature-stage { min-height: 0; height: auto; max-height: none; padding: 0 7.5%; display: flex; flex-direction: column; }
   .signature-art { position: relative; inset: auto; z-index: -1; margin: 38.5vw -8.82% 0; height: auto; aspect-ratio: 1 / 1.18; }
   .signature-art > img { display: none; }
-  .signature-art__portrait { display: block; position: absolute; z-index: 1; top: 0; left: 24%; width: 68.5%; aspect-ratio: 1; background: url('/assets/athi-paper-landing.png') 64% 29.6% / 360.3% 202.8%; }
-  .signature-art__brush { display: block; position: absolute; z-index: 2; left: 4%; top: 69%; width: 89%; aspect-ratio: 981 / 330; background: url('/assets/athi-paper-landing.png') 13.9% 66.77% / 170.44% 285.15%; mix-blend-mode: multiply; }
+  .signature-art__portrait { display: block; position: absolute; z-index: 1; top: 0; left: 24%; width: 68.5%; aspect-ratio: 610 / 600; background: url('/assets/athi-paper-mobile.png') 75.812% 29.13% / 145.41% 295.67%; }
+  .signature-art__brush { display: block; position: absolute; z-index: 2; left: 4%; top: 59%; width: 89%; aspect-ratio: 786 / 285; background: url('/assets/athi-paper-mobile.png') 39.6% 64.137% / 112.85% 622.46%; clip-path: polygon(0 34%,34% 34%,34% 0,100% 0,100% 100%,0 100%); mix-blend-mode: multiply; }
   .signature-art__thread { display: block; position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: var(--accent); }
   .signature-art__thread path { fill: none; stroke: var(--accent); stroke-width: 1.2; }
   .signature-stage__tagline { top: 27.5vw; left: 7.5%; font-size: clamp(.85rem, 3.1vw, 1.35rem); }

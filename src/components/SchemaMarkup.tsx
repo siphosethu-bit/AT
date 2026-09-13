@@ -1,7 +1,9 @@
-import { liveEvents, polymorphism } from '../content/artist'
+import { polymorphism } from '../content/artist'
+import { useSiteContent } from '../context/SiteContentContext'
 import { getLiveEventStatus } from '../lib/liveEvents'
 
 export function SchemaMarkup() {
+  const { shows: liveEvents } = useSiteContent()
   const data = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -70,5 +72,5 @@ export function SchemaMarkup() {
     ],
   }
 
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />
+  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, '\\u003c') }} />
 }

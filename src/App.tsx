@@ -3,6 +3,7 @@ import { Layout } from './components/Layout'
 import { SchemaMarkup } from './components/SchemaMarkup'
 import { CommunityProvider } from './context/CommunityContext'
 import { TourRequestProvider } from './context/TourRequestContext'
+import { SiteContentProvider } from './context/SiteContentContext'
 import { useRouter } from './lib/router'
 import { BookPage } from './pages/BookPage'
 import { HomePage } from './pages/HomePage'
@@ -15,7 +16,7 @@ const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ def
 export default function App() {
   const { pathname } = useRouter()
   if (pathname === '/admin' || pathname === '/admin/preview') {
-    return <Suspense fallback={<p className="artist-loading" role="status">Opening the artist desk…</p>}><AdminPage key={pathname} /></Suspense>
+    return <SiteContentProvider><Suspense fallback={<p className="artist-loading" role="status">Opening the artist desk…</p>}><AdminPage key={pathname} /></Suspense></SiteContentProvider>
   }
   const page = {
     '/': <HomePage />,
@@ -26,11 +27,11 @@ export default function App() {
   }[pathname] ?? <HomePage />
 
   return (
-    <CommunityProvider>
+    <SiteContentProvider><CommunityProvider>
       <TourRequestProvider>
         <SchemaMarkup />
         <Layout>{page}</Layout>
       </TourRequestProvider>
-    </CommunityProvider>
+    </CommunityProvider></SiteContentProvider>
   )
 }
